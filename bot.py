@@ -43,7 +43,8 @@ dp = Dispatcher()
 LANGS = ("ru", "en", "uk")
 LI = {"ru": 0, "en": 1, "uk": 2}
 TYPES = ("math", "fruit", "animal", "color", "count")
-CYCLES = {"timeout": [0, 3, 5, 10, 30], "cooldown": [0, 5, 30, 60, 1440]}
+CYCLES = {"timeout": [0, 3, 5, 10, 30], "cooldown": [0, 5, 30, 60, 1440], "max_tries": [1, 2, 3, 5]}
+CYC = {"to": "timeout", "cd": "cooldown", "tr": "max_tries"}
 DEFAULT_CH = {
     "enabled": True,
     "mode": "captcha",
@@ -52,6 +53,8 @@ DEFAULT_CH = {
     "cooldown": 0,
     "notify": 0,
     "welcome": "",
+    "notify_mode": "owner",
+    "max_tries": 1,
 }
 
 # ---------- стан у пам'яті ----------
@@ -76,21 +79,32 @@ S = {
     "pick_lang": "🌐 Выберите язык · Choose your language · Оберіть мову",
     "lang_set": ("✅ Язык: русский", "✅ Language: English", "✅ Мова: українська"),
     "home": (
-        "👋 <b>Captcha</b> — защита заявок на вступление.\n\nДобавьте меня в канал или группу администратором с правом «Приглашать пользователей», а в пригласительной ссылке включите одобрение заявок администратором. Я буду проверять каждую заявку капчей.\n\n📣 Ваши каналы и группы: {n}",
-        "👋 <b>Captcha</b> — join request protection.\n\nAdd me to your channel or group as an admin with the “Invite users” right, and turn on admin approval in the invite link. I will check every join request with a captcha.\n\n📣 Your channels and groups: {n}",
-        "👋 <b>Captcha</b> — захист заявок на вступ.\n\nДодайте мене в канал або групу адміністратором із правом «Запрошувати користувачів», а в запрошувальному посиланні увімкніть схвалення заявок адміністратором. Я перевірятиму кожну заявку капчею.\n\n📣 Ваші канали та групи: {n}",
+        "🛡 <b>Captcha</b>\nЗащита заявок на вступление\n\n📣 Ваши каналы и группы: <b>{n}</b>\n\n🟢 защита включена · 🔴 выключена",
+        "🛡 <b>Captcha</b>\nJoin request protection\n\n📣 Your channels and groups: <b>{n}</b>\n\n🟢 protection on · 🔴 off",
+        "🛡 <b>Captcha</b>\nЗахист заявок на вступ\n\n📣 Ваші канали та групи: <b>{n}</b>\n\n🟢 захист увімкнено · 🔴 вимкнено",
     ),
-    "b_add_ch": ("➕ Добавить в канал", "➕ Add to a channel", "➕ Додати в канал"),
-    "b_add_gr": ("➕ Добавить в группу", "➕ Add to a group", "➕ Додати в групу"),
-    "b_find": ("🔄 Найти мои каналы", "🔄 Find my channels", "🔄 Знайти мої канали"),
+    "home_empty": (
+        "🛡 <b>Captcha</b>\nЗащита заявок на вступление\n\n<b>Как начать</b>\n1️⃣ Нажмите «➕ Канал» или «➕ Группа»\n2️⃣ Сделайте меня администратором с правом «Приглашать пользователей»\n3️⃣ В пригласительной ссылке включите одобрение заявок администратором\n\nПосле этого канал появится здесь.",
+        "🛡 <b>Captcha</b>\nJoin request protection\n\n<b>How to start</b>\n1️⃣ Tap “➕ Channel” or “➕ Group”\n2️⃣ Make me an admin with the “Invite users” right\n3️⃣ In the invite link, turn on admin approval\n\nThe channel will then appear here.",
+        "🛡 <b>Captcha</b>\nЗахист заявок на вступ\n\n<b>Як почати</b>\n1️⃣ Натисніть «➕ Канал» або «➕ Група»\n2️⃣ Зробіть мене адміністратором із правом «Запрошувати користувачів»\n3️⃣ У запрошувальному посиланні увімкніть схвалення заявок адміністратором\n\nПісля цього канал з'явиться тут.",
+    ),
+    "b_add_ch": ("➕ Канал", "➕ Channel", "➕ Канал"),
+    "b_add_gr": ("➕ Группа", "➕ Group", "➕ Група"),
+    "b_find": ("🔄 Найти каналы", "🔄 Find channels", "🔄 Знайти канали"),
     "b_lang": ("🌐 Язык", "🌐 Language", "🌐 Мова"),
     "b_back": ("◀️ Назад", "◀️ Back", "◀️ Назад"),
     "b_refresh": ("🔄 Обновить", "🔄 Refresh", "🔄 Оновити"),
     "no_access": ("Нет доступа", "No access", "Немає доступу"),
     "panel": (
-        "⚙️ <b>{title}</b>\n\nБот: {enabled}\nРежим: {mode}\nТипов капчи: {n}\nЖдут ответа: {p}{warn}",
-        "⚙️ <b>{title}</b>\n\nBot: {enabled}\nMode: {mode}\nCaptcha types: {n}\nWaiting for an answer: {p}{warn}",
-        "⚙️ <b>{title}</b>\n\nБот: {enabled}\nРежим: {mode}\nТипів капчі: {n}\nЧекають відповіді: {p}{warn}",
+        "🛡 <b>{title}</b>\n──────────────\n{status}\n\n🎯 Режим: <b>{mode}</b>\n⏱ Время на ответ: <b>{timeout}</b>\n🔁 Попыток: <b>{tries}</b>\n🔔 Уведомления: <b>{notify}</b>\n⏳ Ждут ответа: <b>{p}</b>{warn}",
+        "🛡 <b>{title}</b>\n──────────────\n{status}\n\n🎯 Mode: <b>{mode}</b>\n⏱ Time limit: <b>{timeout}</b>\n🔁 Attempts: <b>{tries}</b>\n🔔 Notifications: <b>{notify}</b>\n⏳ Waiting for an answer: <b>{p}</b>{warn}",
+        "🛡 <b>{title}</b>\n──────────────\n{status}\n\n🎯 Режим: <b>{mode}</b>\n⏱ Час на відповідь: <b>{timeout}</b>\n🔁 Спроб: <b>{tries}</b>\n🔔 Сповіщення: <b>{notify}</b>\n⏳ Чекають відповіді: <b>{p}</b>{warn}",
+    ),
+    "pr_on": ("🟢 <b>Защита включена</b>", "🟢 <b>Protection is on</b>", "🟢 <b>Захист увімкнено</b>"),
+    "pr_off": (
+        "🔴 <b>Защита выключена</b> — заявки не проверяются",
+        "🔴 <b>Protection is off</b> — requests are not checked",
+        "🔴 <b>Захист вимкнено</b> — заявки не перевіряються",
     ),
     "warn_rights": (
         "\n\n⚠️ У бота нет права «Приглашать пользователей». Выдайте его в настройках администраторов, иначе я не смогу одобрять заявки.",
@@ -99,23 +113,35 @@ S = {
     ),
     "mode_captcha": ("Капча", "Captcha", "Капча"),
     "mode_auto": ("Принимать всех", "Accept everyone", "Приймати всіх"),
-    "on": ("✅ ВКЛ", "✅ ON", "✅ УВІМК"),
-    "off": ("⛔ ВЫКЛ", "⛔ OFF", "⛔ ВИМК"),
-    "nf_me": ("✅ мне", "✅ to me", "✅ мені"),
-    "nf_other": ("✅ другому админу", "✅ to another admin", "✅ іншому адміну"),
+    "nm_all": ("👥 Всем админам", "👥 All admins", "👥 Усім адмінам"),
+    "nm_owner": ("👤 Только владельцу", "👤 Owner only", "👤 Лише власнику"),
+    "nm_off": ("🔕 Выключены", "🔕 Off", "🔕 Вимкнено"),
+    "b_pause": ("⏸ Выключить защиту", "⏸ Turn protection off", "⏸ Вимкнути захист"),
+    "b_resume": ("▶️ Включить защиту", "▶️ Turn protection on", "▶️ Увімкнути захист"),
     "b_stats": ("📊 Статистика", "📊 Statistics", "📊 Статистика"),
     "b_types": ("🧩 Типы капчи", "🧩 Captcha types", "🧩 Типи капчі"),
-    "b_bot": ("🔌 Бот: {v}", "🔌 Bot: {v}", "🔌 Бот: {v}"),
-    "b_mode": ("🎯 Режим: {v}", "🎯 Mode: {v}", "🎯 Режим: {v}"),
-    "b_timeout": ("⏱ Тайм-аут: {v}", "⏱ Timeout: {v}", "⏱ Тайм-аут: {v}"),
-    "b_cool": ("🧊 Пауза после ошибки: {v}", "🧊 Pause after a mistake: {v}", "🧊 Пауза після помилки: {v}"),
-    "b_notify": ("🔔 Уведомления: {v}", "🔔 Notifications: {v}", "🔔 Сповіщення: {v}"),
+    "b_settings": ("⚙️ Настройки", "⚙️ Settings", "⚙️ Налаштування"),
     "b_welcome": ("✏️ Приветствие", "✏️ Greeting", "✏️ Привітання"),
     "b_test": ("🧪 Тест капчи", "🧪 Test captcha", "🧪 Тест капчі"),
     "b_bl": ("🚫 Чёрный список", "🚫 Blacklist", "🚫 Чорний список"),
+    "b_mode": ("🎯 Режим: {v}", "🎯 Mode: {v}", "🎯 Режим: {v}"),
+    "b_timeout": ("⏱ Время на ответ: {v}", "⏱ Time limit: {v}", "⏱ Час на відповідь: {v}"),
+    "b_tries": ("🔁 Попыток: {v}", "🔁 Attempts: {v}", "🔁 Спроб: {v}"),
+    "b_cool": ("🧊 Пауза после отказа: {v}", "🧊 Pause after a decline: {v}", "🧊 Пауза після відмови: {v}"),
+    "b_notify": ("🔔 Уведомления: {v}", "🔔 Notifications: {v}", "🔔 Сповіщення: {v}"),
     "m_off": ("выкл", "off", "вимк"),
     "m_min": ("{v} мин", "{v} min", "{v} хв"),
     "m_hour": ("{v} ч", "{v} h", "{v} год"),
+    "set_title": (
+        "⚙️ <b>Настройки</b>\n📣 {title}\n\n🎯 <b>Режим</b> — капча или приём без проверки\n⏱ <b>Время</b> — после него заявка отклоняется\n🔁 <b>Попытки</b> — сколько раз можно ошибиться (больше попыток — слабее защита)\n🧊 <b>Пауза</b> — как долго нельзя подать заявку снова\n🔔 <b>Уведомления</b> — кто получает отчёты\n\nНажмите на пункт, чтобы переключить значение.",
+        "⚙️ <b>Settings</b>\n📣 {title}\n\n🎯 <b>Mode</b> — captcha or accept without a check\n⏱ <b>Time</b> — the request is declined after it\n🔁 <b>Attempts</b> — how many mistakes are allowed (more attempts — weaker protection)\n🧊 <b>Pause</b> — how long a person cannot apply again\n🔔 <b>Notifications</b> — who receives reports\n\nTap an item to switch its value.",
+        "⚙️ <b>Налаштування</b>\n📣 {title}\n\n🎯 <b>Режим</b> — капча або приймання без перевірки\n⏱ <b>Час</b> — після нього заявку відхиляють\n🔁 <b>Спроби</b> — скільки разів можна помилитись (більше спроб — слабший захист)\n🧊 <b>Пауза</b> — як довго не можна подати заявку знову\n🔔 <b>Сповіщення</b> — хто отримує звіти\n\nНатисніть на пункт, щоб перемкнути значення.",
+    ),
+    "nf_title": (
+        "🔔 <b>Уведомления</b>\n📣 {title}\n\nКто получает сообщение о каждой заявке: принята, отклонена или без ответа.\n\n<i>Сообщение получат только те, кто хотя бы раз запускал бота.</i>",
+        "🔔 <b>Notifications</b>\n📣 {title}\n\nWho receives a message about each request: accepted, declined or no answer.\n\n<i>Only people who have started the bot at least once can receive them.</i>",
+        "🔔 <b>Сповіщення</b>\n📣 {title}\n\nХто отримує повідомлення про кожну заявку: прийнято, відхилено або без відповіді.\n\n<i>Отримати їх можуть лише ті, хто хоч раз запускав бота.</i>",
+    ),
     "types_title": (
         "🧩 <b>Типы капчи</b>\n\nДля каждой заявки выбирается случайный тип из включённых.",
         "🧩 <b>Captcha types</b>\n\nA random type among the enabled ones is chosen for each request.",
@@ -134,16 +160,17 @@ S = {
     "stats_title": ("📊 <b>Статистика</b>", "📊 <b>Statistics</b>", "📊 <b>Статистика</b>"),
     "st_24h": ("24 часа", "24 hours", "24 години"),
     "st_7d": ("7 дней", "7 days", "7 днів"),
-    "st_all": ("Всего", "All time", "Всього"),
-    "st_legend": (
-        "✅ принято · ❌ отклонено · ⌛ тайм-аут · 🚫 заблокировано",
-        "✅ approved · ❌ declined · ⌛ timeout · 🚫 blocked",
-        "✅ прийнято · ❌ відхилено · ⌛ тайм-аут · 🚫 заблоковано",
-    ),
+    "st_all": ("Всё время", "All time", "Весь час"),
+    "st_total": ("Всего заявок: <b>{n}</b>", "Total requests: <b>{n}</b>", "Усього заявок: <b>{n}</b>"),
+    "st_empty": ("За этот период заявок пока нет.", "No requests in this period yet.", "За цей період заявок поки немає."),
+    "sl_ok": ("Принято", "Accepted", "Прийнято"),
+    "sl_dec": ("Отклонено", "Declined", "Відхилено"),
+    "sl_to": ("Без ответа", "No answer", "Без відповіді"),
+    "sl_bl": ("Заблокировано", "Blocked", "Заблоковано"),
     "bl_title": (
-        "🚫 <b>Чёрный список</b>: {n}\n\n🚫 — навсегда, ⏳ — временная пауза после ошибки.\nДобавить вручную: <code>/ban ID</code>",
-        "🚫 <b>Blacklist</b>: {n}\n\n🚫 — permanent, ⏳ — temporary pause after a mistake.\nAdd manually: <code>/ban ID</code>",
-        "🚫 <b>Чорний список</b>: {n}\n\n🚫 — назавжди, ⏳ — тимчасова пауза після помилки.\nДодати вручну: <code>/ban ID</code>",
+        "🚫 <b>Чёрный список</b>: {n}\n\n🚫 — навсегда, ⏳ — временная пауза после отказа.\nДобавить вручную: <code>/ban ID</code>",
+        "🚫 <b>Blacklist</b>: {n}\n\n🚫 — permanent, ⏳ — temporary pause after a decline.\nAdd manually: <code>/ban ID</code>",
+        "🚫 <b>Чорний список</b>: {n}\n\n🚫 — назавжди, ⏳ — тимчасова пауза після відмови.\nДодати вручну: <code>/ban ID</code>",
     ),
     "b_unblock": (
         "{i} {id} — разблокировать",
@@ -199,6 +226,13 @@ S = {
         "Сколько предметов вы видите?\n\n{items}",
         "How many items do you see?\n\n{items}",
         "Скільки предметів ви бачите?\n\n{items}",
+    ),
+    "h_time": ("⏱ На ответ: {v}", "⏱ Time limit: {v}", "⏱ Час на відповідь: {v}"),
+    "h_tries": ("🔁 Попыток: {n}", "🔁 Attempts: {n}", "🔁 Спроб: {n}"),
+    "retry": (
+        "❌ Неверно. Осталось попыток: {k}",
+        "❌ Wrong. Attempts left: {k}",
+        "❌ Неправильно. Залишилось спроб: {k}",
     ),
     "ok_join": (
         "✅ Капча пройдена, заявка одобрена!",
@@ -368,6 +402,9 @@ async def init_db():
             user_id bigint PRIMARY KEY,
             lang text NOT NULL
         );
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS notify_mode text NOT NULL DEFAULT 'owner';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS max_tries integer NOT NULL DEFAULT 1;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS owner_id bigint;
         """
     )
     for r in await db.fetch("SELECT * FROM chats"):
@@ -395,13 +432,12 @@ async def register_chat(chat, added_by=None):
         if ch["title"] != title:
             await upd(cid, title=title)
         return ch
-    ch = {"chat_id": cid, "title": title, "ctype": chat.type, "added_by": added_by, **DEFAULT_CH}
-    ch["notify"] = added_by or 0
+    ch = {"chat_id": cid, "title": title, "ctype": chat.type, "added_by": added_by, "owner_id": None, **DEFAULT_CH}
     chats[cid] = ch
     await db.execute(
-        "INSERT INTO chats(chat_id, title, ctype, notify, added_by) VALUES($1, $2, $3, $4, $5) "
+        "INSERT INTO chats(chat_id, title, ctype, added_by) VALUES($1, $2, $3, $4) "
         "ON CONFLICT (chat_id) DO NOTHING",
-        cid, title, chat.type, ch["notify"], added_by,
+        cid, title, chat.type, added_by,
     )
     return ch
 
@@ -448,6 +484,10 @@ async def sync_admins(cid):
     except TelegramAPIError:
         return
     ids = {m.user.id for m in lst if not m.user.is_bot}
+    for m in lst:
+        if st(m) == "creator" and not m.user.is_bot and cid in chats:
+            if chats[cid].get("owner_id") != m.user.id:
+                await upd(cid, owner_id=m.user.id)
     for uid in ids:
         await add_admin(cid, uid)
     for uid, s in list(admins.items()):
@@ -524,10 +564,6 @@ def fmt_min(lang, v):
     return t(lang, "m_hour", v=v // 60)
 
 
-def onoff(lang, v):
-    return t(lang, "on" if v else "off")
-
-
 def kinds_of(ch):
     return [k for k in ch["types"].split(",") if k in TYPES] or ["math"]
 
@@ -564,23 +600,36 @@ async def safe_decline(cid, uid):
         pass
 
 
+def recipients(ch):
+    mode = ch.get("notify_mode", "owner")
+    cid = ch["chat_id"]
+    if mode == "off":
+        return []
+    if mode == "all":
+        return [u for u, s in admins.items() if cid in s]
+    uid = ch.get("owner_id") or ch.get("added_by")
+    return [uid] if uid else []
+
+
 async def notify(cid, uid, name, username, result):
     ch = chats.get(cid)
-    if not ch or not ch["notify"]:
+    if not ch or ch.get("notify_mode") == "off":
         return
-    to = ch["notify"]
-    lang = lang_by_id(to)
-    uname = f"@{esc(username)}" if username else t(lang, "n_nouser")
-    text = (
-        f"{t(lang, 'n_' + result)}\n"
-        f'👤 <a href="tg://user?id={uid}">{esc(name)}</a> ({uname}, <code>{uid}</code>)\n'
-        f"📣 {esc(ch['title'])}"
-    )
-    kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_block"), f"bl:{cid}:{uid}")]])
-    try:
-        await bot.send_message(to, text, reply_markup=kb)
-    except TelegramAPIError:
-        pass
+    if ch.get("notify_mode", "owner") == "owner" and not (ch.get("owner_id") or ch.get("added_by")):
+        await sync_admins(cid)
+    for to in recipients(ch):
+        lang = lang_by_id(to)
+        uname = f"@{esc(username)}" if username else t(lang, "n_nouser")
+        text = (
+            f"{t(lang, 'n_' + result)}\n"
+            f'👤 <a href="tg://user?id={uid}">{esc(name)}</a> ({uname}, <code>{uid}</code>)\n'
+            f"📣 {esc(ch['title'])}"
+        )
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_block"), f"bl:{cid}:{uid}")]])
+        try:
+            await bot.send_message(to, text, reply_markup=kb)
+        except TelegramAPIError:
+            pass
 
 
 # ---------- капчі ----------
@@ -633,10 +682,22 @@ def captcha_markup(cid, uid, options):
     ]])
 
 
-def captcha_message(ch, lang, cid, uid):
+def hint_line(lang, ch):
+    parts = []
+    if ch["timeout"] > 0:
+        parts.append(t(lang, "h_time", v=fmt_min(lang, ch["timeout"])))
+    if ch["max_tries"] > 1:
+        parts.append(t(lang, "h_tries", n=ch["max_tries"]))
+    return "  ·  ".join(parts)
+
+
+def captcha_message(ch, lang, cid, uid, head=None):
     q, opts = build_captcha(random.choice(kinds_of(ch)), lang)
-    welcome = esc(ch["welcome"]) if ch["welcome"] else t(lang, "welcome_def")
-    return f"{welcome}\n\n{q}", captcha_markup(cid, uid, opts)
+    if head is None:
+        head = esc(ch["welcome"]) if ch["welcome"] else t(lang, "welcome_def")
+    hint = hint_line(lang, ch)
+    text = f"{head}\n\n{q}" + (f"\n\n{hint}" if hint else "")
+    return text, captcha_markup(cid, uid, opts)
 
 
 # ---------- заявки на вступ ----------
@@ -734,11 +795,36 @@ async def on_answer(cb: CallbackQuery):
         await cb.answer()
         return
 
-    info = pending.pop((cid, uid), None)
-    lang = (info or {}).get("lang") or lang_of(cb.from_user)
-    name = info["name"] if info else cb.from_user.full_name
-    username = info["username"] if info else cb.from_user.username
+    key = (cid, uid)
     ch = chats.get(cid)
+    info = pending.get(key)
+    if info is None:
+        info = {
+            "ucid": cb.message.chat.id,
+            "mid": cb.message.message_id,
+            "t": time.monotonic(),
+            "name": cb.from_user.full_name,
+            "username": cb.from_user.username,
+            "lang": None,
+            "fails": 0,
+        }
+    lang = info.get("lang") or lang_of(cb.from_user)
+
+    if not correct and ch:
+        info["fails"] = info.get("fails", 0) + 1
+        left = ch["max_tries"] - info["fails"]
+        if left > 0:
+            pending[key] = info
+            text, markup = captcha_message(ch, lang, cid, uid, head=t(lang, "retry", k=left))
+            try:
+                await cb.message.edit_text(text, reply_markup=markup)
+            except TelegramAPIError:
+                pass
+            await cb.answer()
+            return
+
+    pending.pop(key, None)
+    name, username = info["name"], info["username"]
 
     result = None
     if correct:
@@ -752,8 +838,8 @@ async def on_answer(cb: CallbackQuery):
         text = t(lang, "wrong")
         cd = ch["cooldown"] if ch else 0
         if cd > 0:
-            if (cid, uid) not in blocks or blocks[(cid, uid)] is not None:
-                blocks[(cid, uid)] = datetime.now(timezone.utc) + timedelta(minutes=cd)
+            if key not in blocks or blocks[key] is not None:
+                blocks[key] = datetime.now(timezone.utc) + timedelta(minutes=cd)
             text += " " + t(lang, "wait", v=fmt_min(lang, cd))
         result = "declined"
 
@@ -843,17 +929,23 @@ def home_view(uid, lang):
     cids = [c for c in admins.get(uid, ()) if c in chats]
     rows = []
     for cid in sorted(cids, key=lambda c: chats[c]["title"].lower())[:25]:
-        rows.append([btn("📣 " + chats[cid]["title"][:40], f"o:{cid}")])
-    rows.append([InlineKeyboardButton(
-        text=t(lang, "b_add_ch"),
-        url=f"https://t.me/{BOT_USER}?startchannel=botstart&admin=invite_users",
-    )])
-    rows.append([InlineKeyboardButton(
-        text=t(lang, "b_add_gr"),
-        url=f"https://t.me/{BOT_USER}?startgroup=botstart&admin=invite_users",
-    )])
+        dot = "🟢" if chats[cid]["enabled"] else "🔴"
+        rows.append([btn(f"{dot}  {chats[cid]['title'][:40]}", f"o:{cid}")])
+    rows.append([
+        InlineKeyboardButton(
+            text=t(lang, "b_add_ch"),
+            url=f"https://t.me/{BOT_USER}?startchannel=botstart&admin=invite_users",
+        ),
+        InlineKeyboardButton(
+            text=t(lang, "b_add_gr"),
+            url=f"https://t.me/{BOT_USER}?startgroup=botstart&admin=invite_users",
+        ),
+    ])
     rows.append([btn(t(lang, "b_find"), "lc"), btn(t(lang, "b_lang"), "lg")])
-    return t(lang, "home", n=len(cids)), InlineKeyboardMarkup(inline_keyboard=rows)
+    if uid == OWNER_ID:
+        rows.append([btn("👑 Панель автора", "ow:0")])
+    text = t(lang, "home", n=len(cids)) if cids else t(lang, "home_empty")
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def panel_view(cid, lang, uid):
@@ -868,23 +960,47 @@ async def panel_view(cid, lang, uid):
     mode = t(lang, "mode_captcha" if ch["mode"] == "captcha" else "mode_auto")
     text = t(
         lang, "panel",
-        title=esc(ch["title"]), enabled=onoff(lang, ch["enabled"]), mode=mode,
-        n=len(kinds_of(ch)), p=sum(1 for k in pending if k[0] == cid), warn=warn,
+        title=esc(ch["title"]),
+        status=t(lang, "pr_on" if ch["enabled"] else "pr_off"),
+        mode=mode,
+        timeout=fmt_min(lang, ch["timeout"]),
+        tries=ch["max_tries"],
+        notify=t(lang, "nm_" + ch["notify_mode"]),
+        p=sum(1 for k in pending if k[0] == cid),
+        warn=warn,
     )
-    nf = ch["notify"]
-    nf_label = t(lang, "off") if not nf else t(lang, "nf_me" if nf == uid else "nf_other")
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [btn(t(lang, "b_stats"), f"x:st:{cid}"), btn(t(lang, "b_types"), f"x:ty:{cid}")],
-        [btn(t(lang, "b_bot", v=onoff(lang, ch["enabled"])), f"x:en:{cid}")],
-        [btn(t(lang, "b_mode", v=mode), f"x:md:{cid}")],
-        [btn(t(lang, "b_timeout", v=fmt_min(lang, ch["timeout"])), f"x:to:{cid}")],
-        [btn(t(lang, "b_cool", v=fmt_min(lang, ch["cooldown"])), f"x:cd:{cid}")],
-        [btn(t(lang, "b_notify", v=nf_label), f"x:nf:{cid}")],
+        [btn(t(lang, "b_pause" if ch["enabled"] else "b_resume"), f"x:en:{cid}")],
+        [btn(t(lang, "b_stats"), f"x:st:{cid}"), btn(t(lang, "b_settings"), f"x:se:{cid}")],
+        [btn(t(lang, "b_types"), f"x:ty:{cid}"), btn(t(lang, "b_bl"), f"x:bl:{cid}")],
         [btn(t(lang, "b_welcome"), f"x:wl:{cid}"), btn(t(lang, "b_test"), f"x:ts:{cid}")],
-        [btn(t(lang, "b_bl"), f"x:bl:{cid}")],
         [btn(t(lang, "b_back"), "h")],
     ])
     return text, kb
+
+
+def settings_view(cid, lang):
+    ch = chats[cid]
+    mode = t(lang, "mode_captcha" if ch["mode"] == "captcha" else "mode_auto")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [btn(t(lang, "b_mode", v=mode), f"x:md:{cid}")],
+        [btn(t(lang, "b_timeout", v=fmt_min(lang, ch["timeout"])), f"x:to:{cid}")],
+        [btn(t(lang, "b_tries", v=ch["max_tries"]), f"x:tr:{cid}")],
+        [btn(t(lang, "b_cool", v=fmt_min(lang, ch["cooldown"])), f"x:cd:{cid}")],
+        [btn(t(lang, "b_notify", v=t(lang, "nm_" + ch["notify_mode"])), f"x:nm:{cid}")],
+        [btn(t(lang, "b_back"), f"o:{cid}")],
+    ])
+    return t(lang, "set_title", title=esc(ch["title"])), kb
+
+
+def notif_view(cid, lang):
+    cur = chats[cid]["notify_mode"]
+    rows = [
+        [btn(("✅ " if cur == m else "▫️ ") + t(lang, "nm_" + m), f"x:ns:{cid}:{m}")]
+        for m in ("all", "owner", "off")
+    ]
+    rows.append([btn(t(lang, "b_back"), f"x:se:{cid}")])
+    return t(lang, "nf_title", title=esc(chats[cid]["title"])), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def types_view(cid, lang):
@@ -897,41 +1013,92 @@ def types_view(cid, lang):
     return t(lang, "types_title"), InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-async def stats_view(cid, lang):
+def bar(n, total, width=10):
+    if not total or not n:
+        return "▱" * width
+    filled = max(1, round(width * n / total))
+    return "▰" * filled + "▱" * (width - filled)
+
+
+async def stats_view(cid, lang, period="d"):
     await flush_stats()
     now = datetime.now(timezone.utc)
+    since = {"d": now - timedelta(days=1), "w": now - timedelta(days=7)}.get(
+        period, datetime(2000, 1, 1, tzinfo=timezone.utc)
+    )
     rows = await db.fetch(
-        "SELECT result, "
-        "count(*) FILTER (WHERE ts >= $2) AS d1, "
-        "count(*) FILTER (WHERE ts >= $3) AS d7, "
-        "count(*) AS al "
-        "FROM chat_stats WHERE chat_id = $1 GROUP BY result",
-        cid, now - timedelta(days=1), now - timedelta(days=7),
+        "SELECT result, count(*) AS n FROM chat_stats "
+        "WHERE chat_id = $1 AND ts >= $2 GROUP BY result",
+        cid, since,
     )
-    periods = {"d1": {}, "d7": {}, "al": {}}
-    for r in rows:
-        for p in periods:
-            periods[p][r["result"]] = r[p]
-
-    def line(label, c):
-        ok = c.get("approved", 0) + c.get("auto", 0)
-        return (
-            f"<b>{label}</b>: ✅ {ok} · ❌ {c.get('declined', 0)} · "
-            f"⌛ {c.get('timeout', 0)} · 🚫 {c.get('blocked', 0)}"
-        )
-
-    text = (
-        f"{t(lang, 'stats_title')} — {esc(chats[cid]['title'])}\n\n"
-        f"{line(t(lang, 'st_24h'), periods['d1'])}\n"
-        f"{line(t(lang, 'st_7d'), periods['d7'])}\n"
-        f"{line(t(lang, 'st_all'), periods['al'])}\n\n"
-        f"{t(lang, 'st_legend')}"
-    )
+    c = {r["result"]: r["n"] for r in rows}
+    ok = c.get("approved", 0) + c.get("auto", 0)
+    items = [
+        ("✅", "sl_ok", ok),
+        ("❌", "sl_dec", c.get("declined", 0)),
+        ("⌛", "sl_to", c.get("timeout", 0)),
+        ("🚫", "sl_bl", c.get("blocked", 0)),
+    ]
+    total = sum(n for _, _, n in items)
+    head = f"{t(lang, 'stats_title')}\n📣 {esc(chats[cid]['title'])}\n\n"
+    if total == 0:
+        body = t(lang, "st_empty")
+    else:
+        blocks_txt = [
+            f"{e} {t(lang, k)}: <b>{n}</b>\n{bar(n, total)}  {round(100 * n / total)}%"
+            for e, k, n in items
+            if n or k == "sl_ok"
+        ]
+        body = t(lang, "st_total", n=total) + "\n\n" + "\n\n".join(blocks_txt)
+    tabs = [("d", "st_24h"), ("w", "st_7d"), ("a", "st_all")]
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [btn(t(lang, "b_refresh"), f"x:st:{cid}")],
+        [btn(("• " if k == period else "") + t(lang, lbl), f"x:st:{cid}:{k}") for k, lbl in tabs],
+        [btn(t(lang, "b_refresh"), f"x:st:{cid}:{period}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
-    return text, kb
+    return head + body, kb
+
+
+OWNER_PAGE = 6
+
+
+def owner_view(page):
+    items = sorted(chats.values(), key=lambda c: c["title"].lower())
+    pages = max(1, (len(items) + OWNER_PAGE - 1) // OWNER_PAGE)
+    page = min(max(page, 0), pages - 1)
+    chunk = items[page * OWNER_PAGE:(page + 1) * OWNER_PAGE]
+    on = sum(1 for c in items if c["enabled"])
+    lines = [
+        "👑 <b>Панель автора</b>",
+        "──────────────",
+        f"📣 Каналів і груп: <b>{len(items)}</b> (🟢 {on})",
+        f"👥 Адмінів: <b>{len(admins)}</b>",
+        f"⏳ Чекають капчі: <b>{len(pending)}</b> · 🚫 блокувань: <b>{len(blocks)}</b>",
+        f"🕒 Аптайм: <b>{int((time.time() - STARTED) / 3600)} год</b>",
+        "",
+    ]
+    if not chunk:
+        lines.append("Каналів поки немає.")
+    kinds = {"channel": "📢 канал", "group": "👥 група", "supergroup": "👥 група"}
+    for i, c in enumerate(chunk, page * OWNER_PAGE + 1):
+        cid = c["chat_id"]
+        dot = "🟢" if c["enabled"] else "🔴"
+        n_adm = sum(1 for s in admins.values() if cid in s)
+        who = c.get("owner_id") or c.get("added_by")
+        who_txt = f'<a href="tg://user?id={who}">{who}</a>' if who else "—"
+        lines.append(
+            f"{i}. {dot} <b>{esc(c['title'])}</b>\n"
+            f"    {kinds.get(c['ctype'], esc(c['ctype']))} · 👥 {n_adm} · 👤 {who_txt}\n"
+            f"    <code>{cid}</code>"
+        )
+    nav = []
+    if page > 0:
+        nav.append(btn("◀️", f"ow:{page - 1}"))
+    nav.append(btn(f"{page + 1}/{pages}", f"ow:{page}"))
+    if page < pages - 1:
+        nav.append(btn("▶️", f"ow:{page + 1}"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[nav, [btn("🔄 Оновити", f"ow:{page}")], [btn("◀️ Меню", "h")]])
+    return "\n".join(lines), kb
 
 
 def bl_view(cid, lang):
@@ -998,14 +1165,15 @@ async def cmd_unban(m: Message, command: CommandObject):
 
 @dp.message(Command("owner"), F.from_user.id == OWNER_ID, F.chat.type == "private")
 async def cmd_owner(m: Message):
-    await m.answer(
-        f"📈 Канали: {len(chats)} (увімкнено: {sum(1 for c in chats.values() if c['enabled'])})\n"
-        f"Адмінів: {len(admins)}\n"
-        f"Чекають капчі: {len(pending)}\n"
-        f"Блокувань: {len(blocks)}\n"
-        f"Статистика в буфері: {len(stat_buf)}\n"
-        f"Аптайм: {int((time.time() - STARTED) / 3600)} год"
-    )
+    text, kb = owner_view(0)
+    await m.answer(text, reply_markup=kb)
+
+
+@dp.callback_query(F.data.startswith("ow:"), F.from_user.id == OWNER_ID)
+async def on_owner_page(cb: CallbackQuery):
+    text, kb = owner_view(int(cb.data.split(":")[1]))
+    await show(cb, text, kb)
+    await cb.answer()
 
 
 def waiting_text(m: Message) -> bool:
@@ -1108,19 +1276,27 @@ async def on_action(cb: CallbackQuery):
     sel[uid] = cid
     if act != "wl":
         awaiting.pop(uid, None)
-    screen = "main"
+    screen, period = "main", "d"
 
     if act == "en":
         await upd(cid, enabled=not ch["enabled"])
     elif act == "md":
         await upd(cid, mode="auto" if ch["mode"] == "captcha" else "captcha")
-    elif act in ("to", "cd"):
-        key = "timeout" if act == "to" else "cooldown"
+        screen = "set"
+    elif act in CYC:
+        key = CYC[act]
         vals, cur = CYCLES[key], ch[key]
         nxt = vals[(vals.index(cur) + 1) % len(vals)] if cur in vals else vals[0]
         await upd(cid, **{key: nxt})
-    elif act == "nf":
-        await upd(cid, notify=0 if ch["notify"] == uid else uid)
+        screen = "set"
+    elif act == "se":
+        screen = "set"
+    elif act == "nm":
+        screen = "notif"
+    elif act == "ns":
+        if arg in ("all", "owner", "off"):
+            await upd(cid, notify_mode=arg)
+        screen = "notif"
     elif act == "wr":
         await upd(cid, welcome="")
     elif act == "ty":
@@ -1138,6 +1314,7 @@ async def on_action(cb: CallbackQuery):
         screen = "types"
     elif act == "st":
         screen = "stats"
+        period = arg if arg in ("d", "w", "a") else "d"
     elif act == "bl":
         screen = "bl"
     elif act == "ub":
@@ -1166,9 +1343,13 @@ async def on_action(cb: CallbackQuery):
     if screen == "types":
         text, kb = types_view(cid, lang)
     elif screen == "stats":
-        text, kb = await stats_view(cid, lang)
+        text, kb = await stats_view(cid, lang, period)
     elif screen == "bl":
         text, kb = bl_view(cid, lang)
+    elif screen == "set":
+        text, kb = settings_view(cid, lang)
+    elif screen == "notif":
+        text, kb = notif_view(cid, lang)
     else:
         text, kb = await panel_view(cid, lang, uid)
     await show(cb, text, kb)
