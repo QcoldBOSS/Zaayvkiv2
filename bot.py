@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import html
+import io
 import logging
 import os
 import random
@@ -15,14 +16,23 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError, TelegramBadRequest
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (
+    BufferedInputFile,
     CallbackQuery,
     ChatJoinRequest,
     ChatMemberUpdated,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
+    InputMediaPhoto,
     Message,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
+from collections import deque
+
+try:
+    from PIL import Image, ImageDraw, ImageFont
+    PIL_OK = True
+except Exception:  # Pillow не встановлено — буде текстова статистика
+    PIL_OK = False
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("bot")
@@ -36,6 +46,9 @@ SECRET = hashlib.sha256(TOKEN.encode()).hexdigest()[:32]
 
 FLUSH_EVERY = 1200  # секунд між записами статистики в базу
 FLUSH_MAX = 100     # або коли назбиралось стільки записів
+RAID_N = int(os.getenv("RAID_N", "25"))   # стільки заявок за хвилину = рейд
+RAID_WINDOW = 60
+RAID_MINUTES = 15
 
 bot = Bot(TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
@@ -55,6 +68,9 @@ DEFAULT_CH = {
     "welcome": "",
     "notify_mode": "owner",
     "max_tries": 1,
+    "raid_guard": True,
+    "weekly": False,
+    "last_report": None,
 }
 
 # ---------- стан у пам'яті ----------
@@ -73,6 +89,7 @@ admin_cache = {}  # (chat_id, user_id) -> (bool, time)
 stat_buf = []
 background = []
 flush_lock = asyncio.Lock()
+raid = {}         # chat_id -> {times, until}
 
 # ---------- тексти: (ru, en, uk) ----------
 S = {
@@ -278,6 +295,37 @@ S = {
     ),
 }
 
+S.update({
+    "img_title": ("Статистика", "Statistics", "Статистика"),
+    "img_for": ("заявок · {p}", "requests · {p}", "заявок · {p}"),
+    "img_acc": ("принято", "accepted", "прийнято"),
+    "img_vs": ("к прошлому", "vs previous", "до минулого"),
+    "img_upd": ("Обновлено {hm} UTC", "Updated {hm} UTC", "Оновлено {hm} UTC"),
+    "img_c_d": ("Последние 24 часа (часов назад)", "Last 24 hours (hours ago)", "Останні 24 години (годин тому)"),
+    "img_c_w": ("Последние 7 дней", "Last 7 days", "Останні 7 днів"),
+    "img_c_a": ("Последние 8 недель", "Last 8 weeks", "Останні 8 тижнів"),
+    "v_on": ("вкл", "on", "увімк"),
+    "v_off": ("выкл", "off", "вимк"),
+    "b_raid": ("🚨 Антирейд: {v}", "🚨 Anti-raid: {v}", "🚨 Антирейд: {v}"),
+    "b_weekly": ("📬 Недельный отчёт: {v}", "📬 Weekly report: {v}", "📬 Тижневий звіт: {v}"),
+    "set_title": (
+        "⚙️ <b>Настройки</b>\n📣 {title}\n\n🎯 <b>Режим</b> — капча или приём без проверки\n⏱ <b>Время</b> — после него заявка отклоняется\n🔁 <b>Попытки</b> — сколько раз можно ошибиться (больше попыток — слабее защита)\n🧊 <b>Пауза</b> — как долго нельзя подать заявку снова\n🚨 <b>Антирейд</b> — при наплыве заявок включает строгий режим\n📬 <b>Отчёт</b> — по понедельникам картинка со статистикой\n🔔 <b>Уведомления</b> — кто получает сообщения\n\nНажмите на пункт, чтобы переключить значение.",
+        "⚙️ <b>Settings</b>\n📣 {title}\n\n🎯 <b>Mode</b> — captcha or accept without a check\n⏱ <b>Time</b> — the request is declined after it\n🔁 <b>Attempts</b> — how many mistakes are allowed (more attempts — weaker protection)\n🧊 <b>Pause</b> — how long a person cannot apply again\n🚨 <b>Anti-raid</b> — turns on a strict mode when requests flood in\n📬 <b>Report</b> — a statistics picture every Monday\n🔔 <b>Notifications</b> — who receives messages\n\nTap an item to switch its value.",
+        "⚙️ <b>Налаштування</b>\n📣 {title}\n\n🎯 <b>Режим</b> — капча або приймання без перевірки\n⏱ <b>Час</b> — після нього заявку відхиляють\n🔁 <b>Спроби</b> — скільки разів можна помилитись (більше спроб — слабший захист)\n🧊 <b>Пауза</b> — як довго не можна подати заявку знову\n🚨 <b>Антирейд</b> — при напливі заявок вмикає суворий режим\n📬 <b>Звіт</b> — щопонеділка картинка зі статистикою\n🔔 <b>Сповіщення</b> — хто отримує повідомлення\n\nНатисніть на пункт, щоб перемкнути значення.",
+    ),
+    "raid_alert": (
+        "🚨 <b>Антирейд</b> · {title}\nЗа минуту пришло заявок: <b>{n}</b>. На {m} мин включён строгий режим: одна попытка, до 2 мин на ответ, пауза 30 мин после ошибки.\n\nОтключить защиту можно в настройках канала.",
+        "🚨 <b>Anti-raid</b> · {title}\nRequests in the last minute: <b>{n}</b>. A strict mode is on for {m} min: one attempt, up to 2 min to answer, 30 min pause after a mistake.\n\nYou can turn this protection off in the channel settings.",
+        "🚨 <b>Антирейд</b> · {title}\nЗа хвилину надійшло заявок: <b>{n}</b>. На {m} хв увімкнено суворий режим: одна спроба, до 2 хв на відповідь, пауза 30 хв після помилки.\n\nВимкнути захист можна в налаштуваннях каналу.",
+    ),
+    "raid_on": (
+        "\n\n🚨 Активен режим антирейда ещё {m} мин.",
+        "\n\n🚨 Anti-raid mode is active for {m} more min.",
+        "\n\n🚨 Активний режим антирейду ще {m} хв.",
+    ),
+    "weekly_head": ("📬 <b>Недельный отчёт</b>", "📬 <b>Weekly report</b>", "📬 <b>Тижневий звіт</b>"),
+})
+
 
 def t(lang, key, **kw):
     v = S[key]
@@ -405,6 +453,9 @@ async def init_db():
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS notify_mode text NOT NULL DEFAULT 'owner';
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS max_tries integer NOT NULL DEFAULT 1;
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS owner_id bigint;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS raid_guard boolean NOT NULL DEFAULT true;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS weekly boolean NOT NULL DEFAULT false;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS last_report date;
         """
     )
     for r in await db.fetch("SELECT * FROM chats"):
@@ -632,6 +683,51 @@ async def notify(cid, uid, name, username, result):
             pass
 
 
+# ---------- антирейд ----------
+
+def raid_hit(cid):
+    """Фіксує заявку; повертає кількість заявок за хвилину, якщо щойно почався рейд."""
+    r = raid.setdefault(cid, {"times": deque(), "until": 0.0})
+    now = time.monotonic()
+    r["times"].append(now)
+    while r["times"] and now - r["times"][0] > RAID_WINDOW:
+        r["times"].popleft()
+    if len(r["times"]) >= RAID_N and r["until"] <= now:
+        r["until"] = now + RAID_MINUTES * 60
+        return len(r["times"])
+    return 0
+
+
+def eff(ch):
+    """Ефективні налаштування: під час рейду діє суворий режим."""
+    r = raid.get(ch["chat_id"])
+    if r and r["until"] > time.monotonic():
+        return {
+            **ch,
+            "max_tries": 1,
+            "timeout": min(ch["timeout"] or 2, 2),
+            "cooldown": max(ch["cooldown"], 30),
+        }
+    return ch
+
+
+async def raid_alert(cid, n):
+    ch = chats.get(cid)
+    if not ch:
+        return
+    targets = set(recipients(ch))
+    if not targets:
+        owner = ch.get("owner_id") or ch.get("added_by")
+        if owner:
+            targets.add(owner)
+    for to in targets:
+        lang = lang_by_id(to)
+        try:
+            await bot.send_message(to, t(lang, "raid_alert", title=esc(ch["title"]), n=n, m=RAID_MINUTES))
+        except TelegramAPIError:
+            pass
+
+
 # ---------- капчі ----------
 
 def build_captcha(kind, lang):
@@ -695,7 +791,7 @@ def captcha_message(ch, lang, cid, uid, head=None):
     q, opts = build_captcha(random.choice(kinds_of(ch)), lang)
     if head is None:
         head = esc(ch["welcome"]) if ch["welcome"] else t(lang, "welcome_def")
-    hint = hint_line(lang, ch)
+    hint = hint_line(lang, eff(ch))
     text = f"{head}\n\n{q}" + (f"\n\n{hint}" if hint else "")
     return text, captcha_markup(cid, uid, opts)
 
@@ -710,6 +806,11 @@ async def on_join_request(req: ChatJoinRequest):
         ch = await register_chat(req.chat)
     if not ch["enabled"]:
         return
+
+    if ch["mode"] == "captcha" and ch.get("raid_guard", True):
+        n = raid_hit(cid)
+        if n:
+            background.append(asyncio.create_task(raid_alert(cid, n)))
 
     key = (cid, uid)
     if key in blocks:
@@ -796,7 +897,7 @@ async def on_answer(cb: CallbackQuery):
         return
 
     key = (cid, uid)
-    ch = chats.get(cid)
+    ch = eff(chats[cid]) if cid in chats else None
     info = pending.get(key)
     if info is None:
         info = {
@@ -864,6 +965,8 @@ async def timeout_loop():
             for key, p in list(pending.items()):
                 cid, uid = key
                 ch = chats.get(cid)
+                if ch:
+                    ch = eff(ch)
                 minutes = ch["timeout"] if ch else 5
                 if minutes <= 0 or now - p["t"] < minutes * 60:
                     continue
@@ -919,9 +1022,35 @@ async def on_my_member(ev: ChatMemberUpdated):
 # ---------- панель ----------
 
 async def show(cb, text, kb):
+    msg = cb.message
+    if getattr(msg, "photo", None):  # з картинки не можна зробити текст — надсилаємо нове повідомлення
+        try:
+            await msg.delete()
+        except TelegramAPIError:
+            pass
+        await bot.send_message(msg.chat.id, text, reply_markup=kb)
+        return
     try:
-        await cb.message.edit_text(text, reply_markup=kb)
+        await msg.edit_text(text, reply_markup=kb)
     except TelegramBadRequest:
+        pass
+
+
+async def show_photo(cb, data, caption, kb):
+    msg = cb.message
+    if getattr(msg, "photo", None):
+        try:
+            await msg.edit_media(
+                media=InputMediaPhoto(media=BufferedInputFile(data, "stats.png"), caption=caption),
+                reply_markup=kb,
+            )
+        except TelegramBadRequest:
+            pass
+        return
+    await bot.send_photo(msg.chat.id, BufferedInputFile(data, "stats.png"), caption=caption, reply_markup=kb)
+    try:
+        await msg.delete()
+    except TelegramAPIError:
         pass
 
 
@@ -957,6 +1086,9 @@ async def panel_view(cid, lang, uid):
             warn = t(lang, "warn_rights")
     except TelegramAPIError:
         pass
+    rd_ = raid.get(cid)
+    if rd_ and rd_["until"] > time.monotonic():
+        warn += t(lang, "raid_on", m=max(1, int((rd_["until"] - time.monotonic()) / 60)))
     mode = t(lang, "mode_captcha" if ch["mode"] == "captcha" else "mode_auto")
     text = t(
         lang, "panel",
@@ -982,11 +1114,14 @@ async def panel_view(cid, lang, uid):
 def settings_view(cid, lang):
     ch = chats[cid]
     mode = t(lang, "mode_captcha" if ch["mode"] == "captcha" else "mode_auto")
+    onoff = lambda v: t(lang, "v_on" if v else "v_off")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [btn(t(lang, "b_mode", v=mode), f"x:md:{cid}")],
         [btn(t(lang, "b_timeout", v=fmt_min(lang, ch["timeout"])), f"x:to:{cid}")],
         [btn(t(lang, "b_tries", v=ch["max_tries"]), f"x:tr:{cid}")],
         [btn(t(lang, "b_cool", v=fmt_min(lang, ch["cooldown"])), f"x:cd:{cid}")],
+        [btn(t(lang, "b_raid", v=onoff(ch["raid_guard"])), f"x:rg:{cid}")],
+        [btn(t(lang, "b_weekly", v=onoff(ch["weekly"])), f"x:wk:{cid}")],
         [btn(t(lang, "b_notify", v=t(lang, "nm_" + ch["notify_mode"])), f"x:nm:{cid}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
@@ -1020,7 +1155,17 @@ def bar(n, total, width=10):
     return "▰" * filled + "▱" * (width - filled)
 
 
+def stats_kb(cid, lang, period):
+    tabs = [("d", "st_24h"), ("w", "st_7d"), ("a", "st_all")]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [btn(("• " if k == period else "") + t(lang, lbl), f"x:st:{cid}:{k}") for k, lbl in tabs],
+        [btn(t(lang, "b_refresh"), f"x:st:{cid}:{period}")],
+        [btn(t(lang, "b_back"), f"o:{cid}")],
+    ])
+
+
 async def stats_view(cid, lang, period="d"):
+    """Текстова статистика (запасний варіант, якщо картинку намалювати не вдалося)."""
     await flush_stats()
     now = datetime.now(timezone.utc)
     since = {"d": now - timedelta(days=1), "w": now - timedelta(days=7)}.get(
@@ -1044,19 +1189,264 @@ async def stats_view(cid, lang, period="d"):
     if total == 0:
         body = t(lang, "st_empty")
     else:
-        blocks_txt = [
+        parts = [
             f"{e} {t(lang, k)}: <b>{n}</b>\n{bar(n, total)}  {round(100 * n / total)}%"
             for e, k, n in items
             if n or k == "sl_ok"
         ]
-        body = t(lang, "st_total", n=total) + "\n\n" + "\n\n".join(blocks_txt)
-    tabs = [("d", "st_24h"), ("w", "st_7d"), ("a", "st_all")]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [btn(("• " if k == period else "") + t(lang, lbl), f"x:st:{cid}:{k}") for k, lbl in tabs],
-        [btn(t(lang, "b_refresh"), f"x:st:{cid}:{period}")],
-        [btn(t(lang, "b_back"), f"o:{cid}")],
-    ])
-    return head + body, kb
+        body = t(lang, "st_total", n=total) + "\n\n" + "\n\n".join(parts)
+    return head + body, stats_kb(cid, lang, period)
+
+
+PERIODS = {"d": (timedelta(days=1), 8, 10800), "w": (timedelta(days=7), 7, 86400), "a": (None, 8, 604800)}
+DAYNAMES = {
+    "ru": ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"),
+    "en": ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"),
+    "uk": ("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд"),
+}
+
+
+async def stats_data(cid, period):
+    await flush_stats()
+    now = datetime.now(timezone.utc)
+    span, nb, bs = PERIODS[period]
+    since = now - span if span else datetime(2000, 1, 1, tzinfo=timezone.utc)
+    rows = await db.fetch(
+        "SELECT result, count(*) AS n FROM chat_stats "
+        "WHERE chat_id = $1 AND ts >= $2 GROUP BY result",
+        cid, since,
+    )
+    c = {r["result"]: r["n"] for r in rows}
+    prev = 0
+    if span:
+        prev = await db.fetchval(
+            "SELECT count(*) FROM chat_stats WHERE chat_id = $1 AND ts >= $2 AND ts < $3",
+            cid, now - 2 * span, since,
+        )
+    rows = await db.fetch(
+        "SELECT floor(extract(epoch FROM ($2::timestamptz - ts))::float8 / $3::float8)::int AS b, "
+        "result, count(*) AS n FROM chat_stats "
+        "WHERE chat_id = $1 AND ts >= $4 GROUP BY 1, 2",
+        cid, now, float(bs), now - timedelta(seconds=bs * nb),
+    )
+    series = [[0, 0] for _ in range(nb)]
+    for r in rows:
+        b = r["b"]
+        if 0 <= b < nb:
+            series[b][0 if r["result"] in ("approved", "auto") else 1] += r["n"]
+    series.reverse()  # зліва найстарше, справа найновіше
+    return {"c": c, "prev": prev or 0, "series": series, "now": now}
+
+
+def chart_labels(lang, period, now, nb):
+    out = []
+    for k in range(nb - 1, -1, -1):
+        if period == "d":
+            out.append(f"-{(k + 1) * 3}")
+        elif period == "w":
+            out.append(DAYNAMES[lang][(now - timedelta(days=k)).weekday()])
+        else:
+            out.append((now - timedelta(weeks=k + 1)).strftime("%d.%m"))
+    return out
+
+
+_fonts = {}
+
+
+def _font(sz, bold=False):
+    key = (sz, bold)
+    if key in _fonts:
+        return _fonts[key]
+    name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    here = os.path.dirname(os.path.abspath(__file__))
+    f = None
+    for base in (here, "/usr/share/fonts/truetype/dejavu", "/usr/share/fonts/dejavu", "/usr/share/fonts/TTF"):
+        p = os.path.join(base, name)
+        if os.path.exists(p):
+            f = ImageFont.truetype(p, sz)
+            break
+    _fonts[key] = f
+    return f
+
+
+def clean_title(s):
+    s = "".join(ch for ch in (s or "") if ord(ch) < 0x2600 and ch.isprintable()).strip()
+    if len(s) > 30:
+        s = s[:29] + "…"
+    return s or "—"
+
+
+def render_stats(lang, title, period, data):
+    """Малює картку статистики. Повертає PNG-байти або None, якщо немає Pillow чи шрифту."""
+    if not PIL_OK or _font(10) is None or _font(10, True) is None:
+        return None
+    K, U = 2, 900 / 1080
+    R = lambda v: int(round(v * K * U))
+    F = lambda sz, bold=False: _font(R(sz), bold)
+    BG, CARD, TRACK = "#0E1621", "#17212B", "#243040"
+    TXT, MUTED = "#FFFFFF", "#8A97A8"
+    GREEN, RED, AMBER, GRAY, BLUE = "#3DDC84", "#FF5C6C", "#FFB547", "#6B7889", "#2F80ED"
+
+    c, prev, series, now = data["c"], data["prev"], data["series"], data["now"]
+    ok = c.get("approved", 0) + c.get("auto", 0)
+    dec, to, bl = c.get("declined", 0), c.get("timeout", 0), c.get("blocked", 0)
+    total = ok + dec + to + bl
+    label = t(lang, {"d": "st_24h", "w": "st_7d", "a": "st_all"}[period])
+
+    W, H = 1080, 1240
+    img = Image.new("RGB", (R(W), R(H)), BG)
+    d = ImageDraw.Draw(img)
+
+    def card(x0, y0, x1, y1, r=36):
+        d.rounded_rectangle((R(x0), R(y0), R(x1), R(y1)), radius=R(r), fill=CARD)
+
+    # шапка
+    d.text((R(60), R(70)), t(lang, "img_title"), font=F(58, True), fill=TXT, anchor="lm")
+    d.text((R(60), R(130)), clean_title(title), font=F(32), fill=MUTED, anchor="lm")
+    d.text((R(1020), R(70)), t(lang, "img_upd", hm=now.strftime("%H:%M")), font=F(22), fill=MUTED, anchor="rm")
+
+    # вкладки
+    x = 60
+    for k, key in (("d", "st_24h"), ("w", "st_7d"), ("a", "st_all")):
+        sel = k == period
+        d.rounded_rectangle((R(x), R(190), R(x + 300), R(262)), radius=R(36), fill=BLUE if sel else CARD)
+        d.text((R(x + 150), R(226)), t(lang, key), font=F(31, sel), fill=TXT if sel else MUTED, anchor="mm")
+        x += 320
+
+    # підсумок
+    card(40, 300, 1040, 520)
+    d.text((R(80), R(390)), str(total), font=F(118, True), fill=TXT, anchor="lm")
+    d.text((R(80), R(470)), t(lang, "img_for", p=label), font=F(33), fill=MUTED, anchor="lm")
+    if period != "a" and prev > 0:
+        pct = round(100 * (total - prev) / prev)
+        up = pct >= 0
+        d.rounded_rectangle((R(630), R(350), R(1000), R(420)), radius=R(35), fill="#1C3A2C" if up else "#3A1C24")
+        d.text(
+            (R(815), R(385)),
+            f"{'▲' if up else '▼'} {pct:+d}% {t(lang, 'img_vs')}",
+            font=F(22, True), fill=GREEN if up else RED, anchor="mm",
+        )
+
+    # кільце + легенда
+    card(40, 550, 1040, 900)
+    cx, cy, r, wd = 270, 725, 140, 34
+    box = (R(cx - r), R(cy - r), R(cx + r), R(cy + r))
+    d.arc(box, 0, 360, fill=TRACK, width=R(wd))
+    parts = [("sl_ok", ok, GREEN), ("sl_dec", dec, RED), ("sl_to", to, AMBER), ("sl_bl", bl, GRAY)]
+    nonzero = [p for p in parts if p[1] > 0]
+    if len(nonzero) == 1:
+        d.arc(box, 0, 360, fill=nonzero[0][2], width=R(wd))
+    else:
+        ang = -90.0
+        for _, n, col in nonzero:
+            sw = 360.0 * n / total
+            d.arc(box, ang + 1.2, ang + sw - 1.2, fill=col, width=R(wd))
+            ang += sw
+    pct_ok = f"{round(100 * ok / total)}%" if total else "—"
+    d.text((R(cx), R(cy - 12)), pct_ok, font=F(54, True), fill=TXT, anchor="mm")
+    d.text((R(cx), R(cy + 36)), t(lang, "img_acc"), font=F(25), fill=MUTED, anchor="mm")
+    ly = 612
+    for key, n, col in parts:
+        d.ellipse((R(480), R(ly + 8), R(508), R(ly + 36)), fill=col)
+        d.text((R(526), R(ly + 22)), t(lang, key), font=F(30), fill=TXT, anchor="lm")
+        d.text((R(990), R(ly + 22)), str(n), font=F(34, True), fill=TXT, anchor="rm")
+        ly += 70
+
+    # стовпчики
+    card(40, 930, 1040, 1200)
+    d.text((R(80), R(985)), t(lang, "img_c_" + period), font=F(30, True), fill=TXT, anchor="lm")
+    n = len(series)
+    labels = chart_labels(lang, period, now, n)
+    top, base, bw = 1040, 1150, 80
+    gap = (920 - n * bw) / (n - 1) if n > 1 else 0
+    mx = max([a + o for a, o in series] + [1])
+    for i, (a, o) in enumerate(series):
+        x = 80 + i * (bw + gap)
+        if a + o == 0:
+            d.rounded_rectangle((R(x), R(base - 8), R(x + bw), R(base)), radius=R(4), fill=TRACK)
+        else:
+            ha = max((base - top) * a / mx, 10) if a else 0
+            ho = max((base - top) * o / mx, 10) if o else 0
+            if a:
+                d.rounded_rectangle((R(x), R(base - ha), R(x + bw), R(base)), radius=R(12), fill=GREEN)
+            if o:
+                y1 = base - ha - (3 if a else 0)
+                d.rounded_rectangle((R(x), R(y1 - ho), R(x + bw), R(y1)), radius=R(12), fill=RED)
+        d.text((R(x + bw / 2), R(base + 28)), labels[i], font=F(22), fill=MUTED, anchor="mm")
+
+    img = img.reduce(K)
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+async def stats_screen(cid, lang, period):
+    """Повертає (png | None, підпис або текст, клавіатура)."""
+    if PIL_OK:
+        try:
+            data = await stats_data(cid, period)
+            png = await asyncio.to_thread(render_stats, lang, chats[cid]["title"], period, data)
+            if png:
+                c = data["c"]
+                ok = c.get("approved", 0) + c.get("auto", 0)
+                dec, to, bl = c.get("declined", 0), c.get("timeout", 0), c.get("blocked", 0)
+                caption = (
+                    f"{t(lang, 'stats_title')} · {esc(chats[cid]['title'])}\n"
+                    f"{t(lang, 'st_total', n=ok + dec + to + bl)}\n"
+                    f"✅ {ok} · ❌ {dec} · ⌛ {to} · 🚫 {bl}"
+                )
+                return png, caption, stats_kb(cid, lang, period)
+        except Exception:
+            log.exception("stats image failed")
+    text, kb = await stats_view(cid, lang, period)
+    return None, text, kb
+
+
+# ---------- тижневий звіт ----------
+
+async def send_report(cid):
+    ch = chats.get(cid)
+    if not ch:
+        return
+    targets = set(recipients(ch))
+    if not targets:
+        owner = ch.get("owner_id") or ch.get("added_by")
+        if owner:
+            targets.add(owner)
+    cache = {}
+    for to in targets:
+        lang = lang_by_id(to)
+        if lang not in cache:
+            cache[lang] = await stats_screen(cid, lang, "w")
+        png, caption, _ = cache[lang]
+        head = t(lang, "weekly_head")
+        try:
+            if png:
+                await bot.send_photo(to, BufferedInputFile(png, "report.png"), caption=f"{head}\n{caption}")
+            else:
+                await bot.send_message(to, f"{head}\n\n{caption}")
+        except TelegramAPIError:
+            pass
+
+
+async def weekly_loop():
+    while True:
+        await asyncio.sleep(600)
+        try:
+            now = datetime.now(timezone.utc)
+            if now.weekday() != 0 or now.hour < 9:  # понеділок, після 09:00 UTC
+                continue
+            today = now.date()
+            for cid, ch in list(chats.items()):
+                if not ch.get("weekly"):
+                    continue
+                last = ch.get("last_report")
+                if last and (today - last).days < 6:
+                    continue
+                await upd(cid, last_report=today)
+                await send_report(cid)
+        except Exception:
+            log.exception("weekly loop")
 
 
 OWNER_PAGE = 6
@@ -1291,6 +1681,12 @@ async def on_action(cb: CallbackQuery):
         screen = "set"
     elif act == "se":
         screen = "set"
+    elif act == "rg":
+        await upd(cid, raid_guard=not ch["raid_guard"])
+        screen = "set"
+    elif act == "wk":
+        await upd(cid, weekly=not ch["weekly"])
+        screen = "set"
     elif act == "nm":
         screen = "notif"
     elif act == "ns":
@@ -1343,7 +1739,11 @@ async def on_action(cb: CallbackQuery):
     if screen == "types":
         text, kb = types_view(cid, lang)
     elif screen == "stats":
-        text, kb = await stats_view(cid, lang, period)
+        png, text, kb = await stats_screen(cid, lang, period)
+        if png:
+            await show_photo(cb, png, text, kb)
+            await cb.answer()
+            return
     elif screen == "bl":
         text, kb = bl_view(cid, lang)
     elif screen == "set":
@@ -1370,6 +1770,7 @@ async def on_startup(bot: Bot):
     )
     background.append(asyncio.create_task(timeout_loop()))
     background.append(asyncio.create_task(flush_loop()))
+    background.append(asyncio.create_task(weekly_loop()))
 
 
 async def on_shutdown(bot: Bot):
