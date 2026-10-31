@@ -77,6 +77,8 @@ DEFAULT_CH = {
     "footer": False,
     "footer_link": "",
     "footer_text": "",
+    "footer_sep": "─" * 18,
+    "footer_pre": "🔗 ",
 }
 
 # ---------- стан у пам'яті ----------
@@ -470,20 +472,24 @@ S.update({
     "b_footer": ("🔗 Ссылка в постах", "🔗 Link in posts", "🔗 Посилання в постах"),
     "b_ft_on": ("▶️ Включить", "▶️ Turn on", "▶️ Увімкнути"),
     "b_ft_off": ("⏸ Выключить", "⏸ Turn off", "⏸ Вимкнути"),
-    "b_ft_text": ("✏️ Изменить текст", "✏️ Edit text", "✏️ Змінити текст"),
+    "b_ft_text": ("✏️ Текст", "✏️ Text", "✏️ Текст"),
+    "b_ft_sep": ("✏️ Линия", "✏️ Line", "✏️ Лінія"),
+    "b_ft_styles": ("🎨 Стили", "🎨 Styles", "🎨 Стилі"),
+    "b_ft_link": ("🔗 Своя ссылка", "🔗 Custom link", "🔗 Своє посилання"),
+    "b_ft_auto": ("♻️ Авто-ссылка", "♻️ Auto link", "♻️ Авто-посилання"),
     "ft_default": ("Подписаться на канал", "Subscribe to the channel", "Підписатися на канал"),
     "ft_st_on": ("🟢 <b>Включено</b>", "🟢 <b>On</b>", "🟢 <b>Увімкнено</b>"),
     "ft_st_off": ("🔴 <b>Выключено</b>", "🔴 <b>Off</b>", "🔴 <b>Вимкнено</b>"),
     "ft_title": (
         "🔗 <b>Ссылка в постах</b>\n──────────────\n{status}\n\n"
-        "В конец каждого нового поста бот добавляет ссылку для вступления. Если пост перешлют, по ссылке можно подать заявку, и она пройдёт капчу.\n\n"
-        "📝 Текст: <b>{label}</b>\n🔗 Ссылка: {link}{warn}",
+        "В конец каждого нового поста бот добавляет ссылку для вступления. Если пост перешлют, по ссылке можно подать заявку.\n\n"
+        "<b>Вид:</b>\n{preview}\n\n🔗 Ссылка: {link}{warn}",
         "🔗 <b>Link in posts</b>\n──────────────\n{status}\n\n"
-        "The bot adds a join link to the end of every new post. If a post is forwarded, people can request to join through the link and will pass the captcha.\n\n"
-        "📝 Text: <b>{label}</b>\n🔗 Link: {link}{warn}",
+        "The bot adds a join link to the end of every new post. If a post is forwarded, people can request to join through the link.\n\n"
+        "<b>Look:</b>\n{preview}\n\n🔗 Link: {link}{warn}",
         "🔗 <b>Посилання в постах</b>\n──────────────\n{status}\n\n"
-        "В кінець кожного нового допису бот додає посилання для вступу. Якщо допис перешлють, за посиланням можна подати заявку, і вона пройде капчу.\n\n"
-        "📝 Текст: <b>{label}</b>\n🔗 Посилання: {link}{warn}",
+        "В кінець кожного нового допису бот додає посилання для вступу. Якщо допис перешлють, за посиланням можна подати заявку.\n\n"
+        "<b>Вигляд:</b>\n{preview}\n\n🔗 Посилання: {link}{warn}",
     ),
     "ft_warn": (
         "\n\n⚠️ У бота нет права «Редактировать сообщения». Выдайте его в настройках администраторов канала, иначе ссылка не будет добавляться.",
@@ -501,16 +507,38 @@ S.update({
         "Не вдалося створити посилання. Спробуйте ще раз.",
     ),
     "ft_prompt": (
-        "✏️ Отправьте следующим сообщением новый текст ссылки (до 60 символов).\n\nСейчас: <b>{cur}</b>",
-        "✏️ Send the new link text in your next message (up to 60 characters).\n\nNow: <b>{cur}</b>",
-        "✏️ Надішліть наступним повідомленням новий текст посилання (до 60 символів).\n\nЗараз: <b>{cur}</b>",
+        "✏️ Отправьте следующим сообщением новый текст ссылки (до 60 символов). Можно с эмодзи и красивыми буквами, например: Ｌｕｎｅｘ - подписаться\n\nСейчас: <b>{cur}</b>",
+        "✏️ Send the new link text in your next message (up to 60 characters). Emoji and fancy letters work, e.g. Ｌｕｎｅｘ - subscribe\n\nNow: <b>{cur}</b>",
+        "✏️ Надішліть наступним повідомленням новий текст посилання (до 60 символів). Можна з емодзі та гарними літерами, наприклад: Ｌｕｎｅｘ - підписатися\n\nЗараз: <b>{cur}</b>",
+    ),
+    "ft_sep_prompt": (
+        "✏️ Отправьте следующим сообщением линию, которая будет над ссылкой (до 40 символов). Сама линия ссылкой не будет. Отправьте «-», чтобы убрать линию.\n\nСейчас: {cur}",
+        "✏️ Send the line that goes above the link in your next message (up to 40 characters). The line itself is not a link. Send “-” to remove the line.\n\nNow: {cur}",
+        "✏️ Надішліть наступним повідомленням лінію, яка буде над посиланням (до 40 символів). Сама лінія посиланням не буде. Надішліть «-», щоб прибрати лінію.\n\nЗараз: {cur}",
+    ),
+    "ft_link_prompt": (
+        "🔗 Отправьте свою ссылку (начинается с https://). Чтобы заявки проходили капчу, в ссылке должно быть включено одобрение заявок администратором. Кнопка «Авто-ссылка» создаст такую ссылку сама.\n\nСейчас: {cur}",
+        "🔗 Send your own link (starting with https://). For requests to pass the captcha, the link must have admin approval turned on. The “Auto link” button creates such a link for you.\n\nNow: {cur}",
+        "🔗 Надішліть своє посилання (починається з https://). Щоб заявки проходили капчу, у посиланні має бути увімкнене схвалення заявок адміністратором. Кнопка «Авто-посилання» створить таке посилання сама.\n\nЗараз: {cur}",
+    ),
+    "ft_styles": (
+        "🎨 <b>Стили оформления</b>\n\nВыберите готовый вид. Текст ссылки останется вашим, меняются только линия и значок. Линию и текст потом можно изменить вручную.\n\n{list}",
+        "🎨 <b>Styles</b>\n\nPick a ready-made look. Your link text stays, only the line and the icon change. You can edit the line and the text by hand afterwards.\n\n{list}",
+        "🎨 <b>Стилі оформлення</b>\n\nОберіть готовий вигляд. Текст посилання залишиться вашим, змінюються лише лінія та значок. Лінію й текст потім можна змінити вручну.\n\n{list}",
     ),
     "ft_long": (
-        "Слишком длинно (максимум 60 символов). Попробуйте короче.",
-        "Too long (60 characters max). Try a shorter one.",
-        "Занадто довго (максимум 60 символів). Спробуйте коротше.",
+        "Слишком длинно (максимум {n} символов). Попробуйте короче.",
+        "Too long ({n} characters max). Try a shorter one.",
+        "Занадто довго (максимум {n} символів). Спробуйте коротше.",
+    ),
+    "ft_link_bad": (
+        "Это не похоже на ссылку. Она должна начинаться с https://",
+        "That does not look like a link. It must start with https://",
+        "Це не схоже на посилання. Воно має починатися з https://",
     ),
     "ft_saved": ("✅ Текст сохранён.", "✅ Text saved.", "✅ Текст збережено."),
+    "ft_sep_saved": ("✅ Линия сохранена.", "✅ Line saved.", "✅ Лінію збережено."),
+    "ft_link_saved": ("✅ Ссылка сохранена.", "✅ Link saved.", "✅ Посилання збережено."),
 })
 
 
@@ -646,6 +674,8 @@ async def init_db():
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer boolean NOT NULL DEFAULT false;
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_link text NOT NULL DEFAULT '';
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_text text NOT NULL DEFAULT '';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_sep text NOT NULL DEFAULT '──────────────────';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_pre text NOT NULL DEFAULT '🔗 ';
         """
     )
     for r in await db.fetch("SELECT * FROM chats"):
@@ -2099,18 +2129,37 @@ async def on_welcome_text(m: Message):
     uid, lang = m.from_user.id, lang_of(m.from_user)
     v = awaiting.get(uid)
     footer_mode = isinstance(v, tuple)
+    kind = v[0] if footer_mode else None
     cid = v[1] if footer_mode else v
     text = m.text.strip()
-    if len(text) > (60 if footer_mode else 300):
-        await m.answer(t(lang, "ft_long" if footer_mode else "w_long"))
+    if footer_mode:
+        if len(text) > FT_LIMITS[kind]:
+            await m.answer(t(lang, "ft_long", n=FT_LIMITS[kind]))
+            return
+        link = None
+        if kind == "l":
+            link = norm_link(text)
+            if not link:
+                await m.answer(t(lang, "ft_link_bad"))
+                return
+    elif len(text) > 300:
+        await m.answer(t(lang, "w_long"))
         return
     awaiting.pop(uid, None)
     if cid not in chats or not await is_admin(cid, uid):
         await m.answer(t(lang, "no_access"))
         return
     if footer_mode:
-        await upd(cid, footer_text=text)
-        await m.answer(t(lang, "ft_saved"))
+        if kind == "f":
+            await upd(cid, footer_text=text)
+            done = "ft_saved"
+        elif kind == "s":
+            await upd(cid, footer_sep="" if text in ("-", "0") else text)
+            done = "ft_sep_saved"
+        else:
+            await upd(cid, footer_link=link)
+            done = "ft_link_saved"
+        await m.answer(t(lang, done))
         ftext, fkb = await footer_view(cid, lang)
         await send_chan(m.chat.id, cid, "shield", lang, ftext, fkb)
         return
@@ -2196,7 +2245,7 @@ async def on_action(cb: CallbackQuery):
         return
     ch = chats[cid]
     sel[uid] = cid
-    if act not in ("wl", "fl"):
+    if act not in ("wl", "fl", "fs", "fk"):
         awaiting.pop(uid, None)
     screen, period = "main", "d"
 
@@ -2259,6 +2308,35 @@ async def on_action(cb: CallbackQuery):
         await show_chan(cb, cid, "bubble", t(lang, "ft_prompt", cur=cur), kb)
         await cb.answer()
         return
+    elif act == "fy":
+        screen = "styles"
+    elif act == "fp":
+        idx = int(arg) if arg and arg.isdigit() else -1
+        if 0 <= idx < len(PRESETS):
+            await upd(cid, footer_sep=PRESETS[idx][0], footer_pre=PRESETS[idx][1])
+        screen = "footer"
+    elif act == "fa":
+        ok, err = await footer_new_link(cid, lang)
+        if not ok:
+            await cb.answer(err, show_alert=True)
+            return
+        screen = "footer"
+    elif act == "fs":
+        awaiting[uid] = ("s", cid)
+        cur = f"<code>{esc(ch['footer_sep'])}</code>" if ch.get("footer_sep") else "—"
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:fo:{cid}")]])
+        await show_chan(cb, cid, "bubble", t(lang, "ft_sep_prompt", cur=cur), kb)
+        await cb.answer()
+        return
+    elif act == "fk":
+        awaiting[uid] = ("l", cid)
+        cur = f"<code>{esc(ch['footer_link'])}</code>" if ch.get("footer_link") else "—"
+        kb = InlineKeyboardMarkup(inline_keyboard=[
+            [btn(t(lang, "b_ft_auto"), f"x:fa:{cid}"), btn(t(lang, "b_cancel"), f"x:fo:{cid}")],
+        ])
+        await show_chan(cb, cid, "bubble", t(lang, "ft_link_prompt", cur=cur), kb)
+        await cb.answer()
+        return
     elif act == "st":
         screen = "stats"
         period = arg if arg in ("d", "w", "a") else "d"
@@ -2304,6 +2382,8 @@ async def on_action(cb: CallbackQuery):
         text, kb = notif_view(cid, lang)
     elif screen == "footer":
         text, kb = await footer_view(cid, lang)
+    elif screen == "styles":
+        text, kb = styles_view(cid, lang)
     else:
         text, kb = await panel_view(cid, lang, uid)
     if screen == "stats":
@@ -2316,8 +2396,32 @@ async def on_action(cb: CallbackQuery):
 
 # ---------- посилання в кінці постів ----------
 
+PRESETS = [
+    ("─" * 18, "🔗 "),
+    ("━" * 18, "➤ "),
+    ("═" * 18, "✦ "),
+    ("▬" * 14, "» "),
+    ("", "👉 "),
+]
+FT_LIMITS = {"f": 60, "s": 40, "l": 200}
 albums = {}
 footer_tasks = set()
+
+
+def render_footer(sep, pre, text, link):
+    a = f'<a href="{esc(link)}">{esc(pre)}{esc(text)}</a>'
+    return f"{esc(sep)}\n{a}" if sep else a
+
+
+def footer_html(ch):
+    return render_footer(ch["footer_sep"], ch["footer_pre"], ch["footer_text"], ch["footer_link"])
+
+
+def norm_link(s):
+    s = s.strip()
+    if re.match(r"(?i)^(t|telegram)\.me/", s):
+        s = "https://" + s
+    return s if re.fullmatch(r"https?://\S{3,190}", s) else None
 
 
 async def footer_rights_ok(cid):
@@ -2330,19 +2434,31 @@ async def footer_rights_ok(cid):
     return bool(getattr(me, "can_invite_users", False)), bool(getattr(me, "can_edit_messages", False))
 
 
+async def footer_new_link(cid, lang):
+    inv, _ = await footer_rights_ok(cid)
+    if inv is None:
+        return False, t(lang, "ft_err")
+    if not inv:
+        return False, t(lang, "ft_rights")
+    try:
+        link = await bot.create_chat_invite_link(cid, name="Footer", creates_join_request=True)
+    except TelegramAPIError:
+        return False, t(lang, "ft_err")
+    await upd(cid, footer_link=link.invite_link)
+    return True, ""
+
+
 async def footer_prepare(cid, lang):
     inv, edt = await footer_rights_ok(cid)
     if inv is None:
         return False, t(lang, "ft_err")
-    if not inv or not edt:
-        return False, t(lang, "ft_rights")
     ch = chats[cid]
+    if not edt or (not inv and not ch.get("footer_link")):
+        return False, t(lang, "ft_rights")
     if not ch.get("footer_link"):
-        try:
-            link = await bot.create_chat_invite_link(cid, name="Footer", creates_join_request=True)
-        except TelegramAPIError:
-            return False, t(lang, "ft_err")
-        await upd(cid, footer_link=link.invite_link)
+        ok, err = await footer_new_link(cid, lang)
+        if not ok:
+            return False, err
     if not ch.get("footer_text"):
         await upd(cid, footer_text=t(lang, "ft_default"))
     return True, ""
@@ -2355,24 +2471,38 @@ async def footer_view(cid, lang):
         _, edt = await footer_rights_ok(cid)
         if edt is False:
             warn = t(lang, "ft_warn")
+    label = ch.get("footer_text") or t(lang, "ft_default")
+    href = ch.get("footer_link") or "https://t.me/"
+    preview = render_footer(ch["footer_sep"], ch["footer_pre"], label, href)
     link = f"<code>{esc(ch['footer_link'])}</code>" if ch.get("footer_link") else "—"
     text = t(
         lang, "ft_title",
         status=t(lang, "ft_st_on" if ch["footer"] else "ft_st_off"),
-        label=esc(ch.get("footer_text") or t(lang, "ft_default")),
+        preview=preview,
         link=link,
         warn=warn,
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [btn(t(lang, "b_ft_off" if ch["footer"] else "b_ft_on"), f"x:ft:{cid}")],
-        [btn(t(lang, "b_ft_text"), f"x:fl:{cid}")],
+        [btn(t(lang, "b_ft_text"), f"x:fl:{cid}"), btn(t(lang, "b_ft_sep"), f"x:fs:{cid}")],
+        [btn(t(lang, "b_ft_styles"), f"x:fy:{cid}")],
+        [btn(t(lang, "b_ft_link"), f"x:fk:{cid}"), btn(t(lang, "b_ft_auto"), f"x:fa:{cid}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
     return text, kb
 
 
-def footer_html(ch):
-    return f'<a href="{esc(ch["footer_link"])}">🔗 {esc(ch["footer_text"])}</a>'
+def styles_view(cid, lang):
+    ch = chats[cid]
+    label = ch.get("footer_text") or t(lang, "ft_default")
+    href = ch.get("footer_link") or "https://t.me/"
+    items = []
+    for i, (sep, pre) in enumerate(PRESETS, 1):
+        items.append(f"<b>{i}.</b>\n{render_footer(sep, pre, label, href)}")
+    text = t(lang, "ft_styles", list="\n\n".join(items))
+    nums = [btn(str(i + 1), f"x:fp:{cid}:{i}") for i in range(len(PRESETS))]
+    kb = InlineKeyboardMarkup(inline_keyboard=[nums, [btn(t(lang, "b_back"), f"x:fo:{cid}")]])
+    return text, kb
 
 
 async def add_footer(m, ch):
@@ -2382,7 +2512,7 @@ async def add_footer(m, ch):
     if link in body:
         return
     foot = footer_html(ch)
-    extra = 4 + len(ch["footer_text"])
+    extra = 4 + len(ch["footer_sep"]) + len(ch["footer_pre"]) + len(ch["footer_text"])
     try:
         if m.text is not None:
             if len(plain) + extra > 4096:
