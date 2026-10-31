@@ -5,6 +5,7 @@ import io
 import logging
 import os
 import random
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -87,6 +88,7 @@ pending = {}      # (chat_id, user_id) -> dict
 awaiting = {}     # user_id -> chat_id (очікуємо текст привітання)
 sel = {}          # user_id -> chat_id (відкритий канал, для /ban)
 admin_cache = {}  # (chat_id, user_id) -> (bool, time)
+test_fails = {}   # (chat_id, user_id) -> помилки в тесті капчі
 stat_buf = []
 background = []
 flush_lock = asyncio.Lock()
@@ -325,6 +327,138 @@ S.update({
         "\n\n🚨 Активний режим антирейду ще {m} хв.",
     ),
     "weekly_head": ("📬 <b>Недельный отчёт</b>", "📬 <b>Weekly report</b>", "📬 <b>Тижневий звіт</b>"),
+})
+
+
+S.update({
+    "b_help": ("❓ Подробнее", "❓ Explain", "❓ Докладно"),
+    "test_note": (
+        "🧪 Это был тест — настоящие заявки не затронуты.",
+        "🧪 This was a test — real requests are not affected.",
+        "🧪 Це був тест — справжні заявки не змінено.",
+    ),
+    "bn_shield": ("Защита заявок", "Join request protection", "Захист заявок"),
+    "bn_gear": ("Настройки", "Settings", "Налаштування"),
+    "bn_grid": ("Типы капчи", "Captcha types", "Типи капчі"),
+    "bn_bell": ("Уведомления", "Notifications", "Сповіщення"),
+    "bn_ban": ("Чёрный список", "Blacklist", "Чорний список"),
+    "bn_bubble": ("Приветствие", "Greeting", "Привітання"),
+    "set_title": (
+        "⚙️ <b>Настройки</b>\n📣 {title}\n\n"
+        "🎯 <b>Режим</b> — проверять заявки капчей или принимать всех без проверки\n"
+        "⏱ <b>Время</b> — сколько есть на ответ, потом заявка отклоняется\n"
+        "🔁 <b>Попытки</b> — сколько раз можно ошибиться\n"
+        "🧊 <b>Пауза</b> — как долго нельзя подать новую заявку после отказа\n"
+        "🚨 <b>Антирейд</b> — если ботов вдруг приходит очень много, проверка на {m} мин становится строже\n"
+        "📬 <b>Отчёт</b> — по понедельникам картинка со статистикой\n"
+        "🔔 <b>Уведомления</b> — кто получает сообщения о заявках\n\n"
+        "На кнопках — текущие значения. Нажмите, чтобы изменить. Кнопка «❓ Подробнее» объяснит всё с примерами.",
+        "⚙️ <b>Settings</b>\n📣 {title}\n\n"
+        "🎯 <b>Mode</b> — check applicants with a captcha or accept everyone without a check\n"
+        "⏱ <b>Time</b> — how long a person has to answer, then the request is declined\n"
+        "🔁 <b>Attempts</b> — how many mistakes are allowed\n"
+        "🧊 <b>Pause</b> — how long a person cannot apply again after a decline\n"
+        "🚨 <b>Anti-raid</b> — if a flood of bots suddenly arrives, the check gets stricter for {m} min\n"
+        "📬 <b>Report</b> — a statistics picture every Monday\n"
+        "🔔 <b>Notifications</b> — who receives messages about requests\n\n"
+        "The buttons show current values. Tap one to change it. The “❓ Explain” button describes everything with examples.",
+        "⚙️ <b>Налаштування</b>\n📣 {title}\n\n"
+        "🎯 <b>Режим</b> — перевіряти заявки капчею чи приймати всіх без перевірки\n"
+        "⏱ <b>Час</b> — скільки є часу на відповідь, потім заявку відхиляють\n"
+        "🔁 <b>Спроби</b> — скільки разів можна помилитись\n"
+        "🧊 <b>Пауза</b> — як довго не можна подати нову заявку після відмови\n"
+        "🚨 <b>Антирейд</b> — якщо ботів раптом приходить дуже багато, перевірка на {m} хв стає суворішою\n"
+        "📬 <b>Звіт</b> — щопонеділка картинка зі статистикою\n"
+        "🔔 <b>Сповіщення</b> — хто отримує повідомлення про заявки\n\n"
+        "На кнопках — поточні значення. Натисніть, щоб змінити. Кнопка «❓ Докладно» поясне все на прикладах.",
+    ),
+    "set_help": (
+        "❓ <b>Настройки простыми словами</b>\n\n"
+        "🎯 <b>Режим</b>\n"
+        "<b>Капча</b> — человек, подавший заявку, получает в личные сообщения простое задание (пример, картинка и т. д.). Ответил верно — его принимают. Так отсеиваются боты.\n"
+        "<b>Принимать всех</b> — все заявки одобряются сразу, без проверки.\n\n"
+        "⏱ <b>Время на ответ</b>\n"
+        "Сколько человек может отвечать на капчу. Время вышло — заявка отклоняется сама. Для обычного канала хватает 5 минут. «выкл» — время не ограничено, заявки могут висеть долго.\n\n"
+        "🔁 <b>Попытки</b>\n"
+        "Сколько раз можно ошибиться. При 1 попытке первая же ошибка отклоняет заявку. При 3 попытках можно ошибиться дважды. Больше попыток — удобнее живым людям, но и боту проще угадать.\n\n"
+        "🧊 <b>Пауза после отказа</b>\n"
+        "После отказа (ошибка или время вышло) человек не может сразу подать новую заявку: пока идёт пауза, бот отклоняет её без капчи. Это мешает ботам перебирать ответы снова и снова. «выкл» — пробовать можно сразу.\n\n"
+        "🚨 <b>Антирейд</b>\n"
+        "Рейд — это когда боты массово шлют заявки одновременно. Если за 1 минуту приходит {n} заявок или больше (в режиме капчи), бот на {m} минут включает строгий режим: только 1 попытка, до 2 минут на ответ и пауза 30 минут после ошибки. Вам сразу придёт сообщение. Когда время пройдёт, бот вернётся к вашим настройкам. Рекомендуем оставить включённым.\n\n"
+        "📬 <b>Недельный отчёт</b>\n"
+        "По понедельникам бот присылает картинку: сколько заявок пришло за неделю, сколько принято и отклонено. Получают те, кто выбран в уведомлениях; если они выключены — владелец канала.\n\n"
+        "🔔 <b>Уведомления</b>\n"
+        "Бот пишет в личные сообщения о каждой заявке: принят, отклонён или не ответил. Можно выбрать: всем админам, только владельцу или выключить. Чтобы получать сообщения, нужно хотя бы раз нажать /start в боте.",
+        "❓ <b>Settings in plain words</b>\n\n"
+        "🎯 <b>Mode</b>\n"
+        "<b>Captcha</b> — a person who applies receives a simple task in a private message (a sum, a picture, etc.). A correct answer gets them accepted. This filters out bots.\n"
+        "<b>Accept everyone</b> — all requests are approved at once, with no check.\n\n"
+        "⏱ <b>Time limit</b>\n"
+        "How long a person can take to answer the captcha. When time runs out the request is declined automatically. 5 minutes is enough for a normal channel. “off” means no limit, so requests can hang for a long time.\n\n"
+        "🔁 <b>Attempts</b>\n"
+        "How many mistakes are allowed. With 1 attempt the first mistake declines the request. With 3 attempts a person can be wrong twice. More attempts are friendlier to real people, but a bot can also guess more easily.\n\n"
+        "🧊 <b>Pause after a decline</b>\n"
+        "After a decline (a mistake or timeout) the person cannot apply again right away: while the pause lasts, the bot declines the new request without a captcha. This stops bots from trying answers again and again. “off” means they can retry immediately.\n\n"
+        "🚨 <b>Anti-raid</b>\n"
+        "A raid is when bots send many requests at the same time. If {n} or more requests arrive within 1 minute (in captcha mode), the bot turns on a strict mode for {m} minutes: only 1 attempt, up to 2 minutes to answer and a 30-minute pause after a mistake. You get a message right away. When the time is over, the bot returns to your settings. We recommend keeping it on.\n\n"
+        "📬 <b>Weekly report</b>\n"
+        "Every Monday the bot sends a picture: how many requests arrived this week, how many were accepted and declined. It goes to those chosen in notifications; if those are off, to the channel owner.\n\n"
+        "🔔 <b>Notifications</b>\n"
+        "The bot writes in private messages about every request: accepted, declined or no answer. You can choose all admins, owner only, or off. To receive them, a person must press /start in the bot at least once.",
+        "❓ <b>Налаштування простими словами</b>\n\n"
+        "🎯 <b>Режим</b>\n"
+        "<b>Капча</b> — людина, яка подала заявку, отримує в особисті повідомлення просте завдання (приклад, картинка тощо). Відповіла правильно — її приймають. Так відсіюються боти.\n"
+        "<b>Приймати всіх</b> — усі заявки схвалюються одразу, без перевірки.\n\n"
+        "⏱ <b>Час на відповідь</b>\n"
+        "Скільки людина може відповідати на капчу. Час минув — заявку відхиляють автоматично. Для звичайного каналу вистачає 5 хвилин. «вимк» — час не обмежений, заявки можуть висіти довго.\n\n"
+        "🔁 <b>Спроби</b>\n"
+        "Скільки разів можна помилитись. При 1 спробі перша ж помилка відхиляє заявку. При 3 спробах можна схибити двічі. Більше спроб — зручніше живим людям, але й боту легше вгадати.\n\n"
+        "🧊 <b>Пауза після відмови</b>\n"
+        "Після відмови (помилка чи вичерпаний час) людина не може одразу подати нову заявку: поки триває пауза, бот відхиляє її без капчі. Це заважає ботам перебирати відповіді знову й знову. «вимк» — пробувати можна одразу.\n\n"
+        "🚨 <b>Антирейд</b>\n"
+        "Рейд — це коли боти масово шлють заявки одночасно. Якщо за 1 хвилину надходить {n} заявок або більше (у режимі капчі), бот на {m} хвилин вмикає суворий режим: лише 1 спроба, до 2 хвилин на відповідь і пауза 30 хвилин після помилки. Вам одразу прийде повідомлення. Коли час мине, бот повернеться до ваших налаштувань. Рекомендуємо залишити ввімкненим.\n\n"
+        "📬 <b>Тижневий звіт</b>\n"
+        "Щопонеділка бот надсилає картинку: скільки заявок надійшло за тиждень, скільки прийнято й відхилено. Отримують ті, кого обрано в сповіщеннях; якщо вони вимкнені — власник каналу.\n\n"
+        "🔔 <b>Сповіщення</b>\n"
+        "Бот пише в особисті повідомлення про кожну заявку: прийнято, відхилено чи не відповіла. Можна обрати: усім адмінам, лише власнику або вимкнути. Щоб отримувати повідомлення, потрібно хоч раз натиснути /start у боті.",
+    ),
+    "nf_title": (
+        "🔔 <b>Уведомления</b>\n📣 {title}\n\n"
+        "Бот пишет в личные сообщения о каждой заявке: ✅ принят, ❌ отклонён или ⌛ не ответил. Там указано, кто подал заявку, и есть кнопка «Заблокировать».\n\n"
+        "👥 <b>Всем админам</b> — получают все администраторы канала\n"
+        "👤 <b>Только владельцу</b> — получает только владелец канала\n"
+        "🔕 <b>Выключены</b> — сообщений нет\n\n"
+        "<i>Сообщения придут только тем, кто хотя бы раз нажимал /start в этом боте.</i>",
+        "🔔 <b>Notifications</b>\n📣 {title}\n\n"
+        "The bot writes in private messages about every request: ✅ accepted, ❌ declined or ⌛ no answer. It shows who applied and has a “Block” button.\n\n"
+        "👥 <b>All admins</b> — every channel administrator receives them\n"
+        "👤 <b>Owner only</b> — only the channel owner receives them\n"
+        "🔕 <b>Off</b> — no messages\n\n"
+        "<i>Only people who have pressed /start in this bot at least once can receive them.</i>",
+        "🔔 <b>Сповіщення</b>\n📣 {title}\n\n"
+        "Бот пише в особисті повідомлення про кожну заявку: ✅ прийнято, ❌ відхилено або ⌛ не відповіла. Там видно, хто подав заявку, і є кнопка «Заблокувати».\n\n"
+        "👥 <b>Усім адмінам</b> — отримують усі адміністратори каналу\n"
+        "👤 <b>Лише власнику</b> — отримує лише власник каналу\n"
+        "🔕 <b>Вимкнено</b> — повідомлень немає\n\n"
+        "<i>Повідомлення прийдуть лише тим, хто хоч раз натискав /start у цьому боті.</i>",
+    ),
+    "types_title": (
+        "🧩 <b>Типы капчи</b>\n\n"
+        "➕ <b>Пример</b> — решить арифметику\n"
+        "🍎 <b>Фрукты</b>, 🐶 <b>Животные</b>, 🎨 <b>Цвета</b> — найти нужную картинку по названию\n"
+        "🔢 <b>Подсчёт</b> — сосчитать предметы\n\n"
+        "Для каждой заявки бот выбирает случайный тип из включённых (✅). Чем больше типов, тем сложнее ботам. Нажмите на тип, чтобы включить или выключить его.",
+        "🧩 <b>Captcha types</b>\n\n"
+        "➕ <b>Math</b> — solve a sum\n"
+        "🍎 <b>Fruits</b>, 🐶 <b>Animals</b>, 🎨 <b>Colors</b> — find the right picture by its name\n"
+        "🔢 <b>Counting</b> — count the items\n\n"
+        "For each request the bot picks a random type among the enabled ones (✅). The more types, the harder it is for bots. Tap a type to turn it on or off.",
+        "🧩 <b>Типи капчі</b>\n\n"
+        "➕ <b>Приклад</b> — розв'язати арифметику\n"
+        "🍎 <b>Фрукти</b>, 🐶 <b>Тварини</b>, 🎨 <b>Кольори</b> — знайти потрібну картинку за назвою\n"
+        "🔢 <b>Підрахунок</b> — порахувати предмети\n\n"
+        "Для кожної заявки бот обирає випадковий тип серед увімкнених (✅). Чим більше типів, тим складніше ботам. Натисніть на тип, щоб увімкнути або вимкнути його.",
+    ),
 })
 
 
@@ -622,7 +756,7 @@ async def edit_card(chat_id, mid, key, text, kb=None):
         await bot.edit_message_media(
             chat_id=chat_id,
             message_id=mid,
-            media=InputMediaPhoto(media=img(key), caption=text),
+            media=InputMediaPhoto(media=img(key), caption=text, parse_mode=ParseMode.HTML),
             reply_markup=kb,
         )
         return True
@@ -643,7 +777,7 @@ async def show_home(cb, text, kb):
     msg = cb.message
     if getattr(msg, "photo", None):
         try:
-            await msg.edit_media(media=InputMediaPhoto(media=img("menu"), caption=text), reply_markup=kb)
+            await msg.edit_media(media=InputMediaPhoto(media=img("menu"), caption=text, parse_mode=ParseMode.HTML), reply_markup=kb)
         except TelegramBadRequest:
             pass
         return
@@ -818,9 +952,9 @@ def build_captcha(kind, lang):
     return t(lang, "q_count", items=" ".join([emoji] * n)), [(str(o), o == n) for o in options]
 
 
-def captcha_markup(cid, uid, options):
+def captcha_markup(cid, uid, options, prefix="c"):
     return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=label, callback_data=f"c:{cid}:{uid}:{int(ok)}")
+        InlineKeyboardButton(text=label, callback_data=f"{prefix}:{cid}:{uid}:{int(ok)}")
         for label, ok in options
     ]])
 
@@ -834,13 +968,13 @@ def hint_line(lang, ch):
     return "  ·  ".join(parts)
 
 
-def captcha_message(ch, lang, cid, uid, head=None):
+def captcha_message(ch, lang, cid, uid, head=None, prefix="c"):
     q, opts = build_captcha(random.choice(kinds_of(ch)), lang)
     if head is None:
         head = esc(ch["welcome"]) if ch["welcome"] else t(lang, "welcome_def")
     hint = hint_line(lang, eff(ch))
     text = f"{head}\n\n{q}" + (f"\n\n{hint}" if hint else "")
-    return text, captcha_markup(cid, uid, opts)
+    return text, captcha_markup(cid, uid, opts, prefix)
 
 
 # ---------- заявки на вступ ----------
@@ -921,6 +1055,42 @@ async def on_applicant_lang(cb: CallbackQuery):
         }
     text, markup = captcha_message(ch, lang, cid, uid)
     await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
+    await cb.answer()
+
+
+@dp.callback_query(F.data.startswith("t:"))
+async def on_test_answer(cb: CallbackQuery):
+    """Тест капчі: усе так само, як бачить заявник (картинки, спроби, пауза), але нічого не змінюється."""
+    _, cid, uid, ok = cb.data.split(":")
+    cid, uid = int(cid), int(uid)
+    if cb.from_user.id != uid or cid not in chats:
+        await cb.answer()
+        return
+    lang = lang_of(cb.from_user)
+    raw = chats[cid]
+    ch = eff(raw)
+    chat_id, mid = cb.message.chat.id, cb.message.message_id
+    key = (cid, uid)
+    correct = ok == "1"
+    if not correct:
+        fails = test_fails.get(key, 0) + 1
+        left = ch["max_tries"] - fails
+        if left > 0:
+            test_fails[key] = fails
+            text, markup = captcha_message(raw, lang, cid, uid, head=t(lang, "retry", k=left), prefix="t")
+            await edit_card(chat_id, mid, "captcha", text, markup)
+            await cb.answer()
+            return
+    test_fails.pop(key, None)
+    if correct:
+        text, pic = t(lang, "ok_join"), "success"
+    else:
+        text, pic = t(lang, "wrong"), "fail"
+        if ch["cooldown"] > 0:
+            text += " " + t(lang, "wait", v=fmt_min(lang, ch["cooldown"]))
+    text += "\n\n" + t(lang, "test_note")
+    kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_back"), f"o:{cid}")]])
+    await edit_card(chat_id, mid, pic, text, kb)
     await cb.answer()
 
 
@@ -1071,18 +1241,18 @@ async def show(cb, text, kb):
         pass
 
 
-async def show_photo(cb, data, caption, kb):
+async def show_photo(cb, data, caption, kb, name="stats.png"):
     msg = cb.message
     if getattr(msg, "photo", None):
         try:
             await msg.edit_media(
-                media=InputMediaPhoto(media=BufferedInputFile(data, "stats.png"), caption=caption),
+                media=InputMediaPhoto(media=BufferedInputFile(data, name), caption=caption, parse_mode=ParseMode.HTML),
                 reply_markup=kb,
             )
         except TelegramBadRequest:
             pass
         return
-    await bot.send_photo(msg.chat.id, BufferedInputFile(data, "stats.png"), caption=caption, reply_markup=kb)
+    await bot.send_photo(msg.chat.id, BufferedInputFile(data, name), caption=caption, reply_markup=kb)
     try:
         await msg.delete()
     except TelegramAPIError:
@@ -1158,9 +1328,10 @@ def settings_view(cid, lang):
         [btn(t(lang, "b_raid", v=onoff(ch["raid_guard"])), f"x:rg:{cid}")],
         [btn(t(lang, "b_weekly", v=onoff(ch["weekly"])), f"x:wk:{cid}")],
         [btn(t(lang, "b_notify", v=t(lang, "nm_" + ch["notify_mode"])), f"x:nm:{cid}")],
+        [btn(t(lang, "b_help"), f"x:hp:{cid}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
-    return t(lang, "set_title", title=esc(ch["title"])), kb
+    return t(lang, "set_title", title=esc(ch["title"]), n=RAID_N, m=RAID_MINUTES), kb
 
 
 def notif_view(cid, lang):
@@ -1415,6 +1586,267 @@ def render_stats(lang, title, period, data):
     return buf.getvalue()
 
 
+# ---------- ілюстрації з назвою каналу (малюються на льоту) ----------
+
+def _g(s):
+    return s.strip("\n").split("\n")
+
+
+ICON_GRIDS = {
+    "shield": (
+        _g("""
+.###########.
+#############
+#############
+#############
+#############
+#############
+#############
+#############
+.###########.
+.###########.
+..#########..
+...#######...
+....#####....
+.....###.....
+......#......"""),
+        _g("""
+.............
+.............
+.............
+.............
+.........###.
+........###..
+..##...###...
+..###.###....
+...#####.....
+....###......
+.....#.......
+.............
+.............
+.............
+............."""),
+    ),
+    "gear": (
+        _g("""
+....###....
+.#..###..#.
+###########
+.#########.
+.#########.
+###########
+.#########.
+.#########.
+###########
+.#..###..#.
+....###...."""),
+        _g("""
+...........
+...........
+...........
+...#####...
+...#####...
+...#####...
+...#####...
+...#####...
+...........
+...........
+..........."""),
+    ),
+    "grid": (
+        _g("""
+#####.#####
+#####.#####
+#####.#####
+#####.#####
+#####.#####
+...........
+#####.#####
+#####.#####
+#####.#####
+#####.#####
+#####.#####"""),
+        None,
+    ),
+    "bell": (
+        _g("""
+.....#.....
+....###....
+...#####...
+..#######..
+..#######..
+..#######..
+.#########.
+.#########.
+###########
+###########
+...........
+....###...."""),
+        None,
+    ),
+    "ban": (
+        _g("""
+...#####...
+..#######..
+.#########.
+###########
+###########
+###########
+###########
+###########
+.#########.
+..#######..
+...#####..."""),
+        _g("""
+...........
+...........
+...........
+...........
+..#######..
+..#######..
+..#######..
+...........
+...........
+...........
+..........."""),
+    ),
+    "bubble": (
+        _g("""
+.###########.
+#############
+#############
+#############
+#############
+#############
+.###########.
+...####......
+....###......
+.....##......
+......#......"""),
+        _g("""
+.............
+.............
+.............
+...#..#..#...
+...#..#..#...
+.............
+.............
+.............
+.............
+.............
+............."""),
+    ),
+}
+BANNER_BLOCKS = [
+    (50, 100, 225, 65), (50, 165, 125, 65), (1000, 950, 225, 65), (1100, 1015, 125, 65),
+    (950, 175, 175, 55), (1025, 230, 100, 55), (75, 1050, 175, 55), (75, 1105, 100, 55),
+]
+BANNER_BLOCKS = [(x, y // 2, w, h) for x, y, w, h in BANNER_BLOCKS]
+
+
+def _lerp_color(t, stops):
+    t = min(max(t, 0.0), 1.0)
+    for (t0, c0), (t1, c1) in zip(stops, stops[1:]):
+        if t <= t1:
+            k = (t - t0) / (t1 - t0) if t1 > t0 else 0
+            return tuple(int(c0[i] + (c1[i] - c0[i]) * k) for i in range(3))
+    return stops[-1][1]
+
+
+def render_banner(icon, title, label):
+    """Ілюстрація 1280x720: піксельна іконка + назва каналу. JPEG-байти або None."""
+    if not PIL_OK or _font(10) is None or _font(10, True) is None:
+        return None
+    grid, over = ICON_GRIDS[icon]
+    W, H, S, D = 1280, 720, 20, 26
+    stops = [(0.0, (230, 230, 230)), (0.5, (122, 122, 122)), (1.0, (43, 43, 43))]
+    img = Image.new("RGB", (W, H), "#0F0F0F")
+    d = ImageDraw.Draw(img)
+    for x, y, w, h in BANNER_BLOCKS:
+        d.rectangle((x, y, x + w, y + h), fill="#1D1D1D")
+    cells = [(x, y) for y, r in enumerate(grid) for x, c in enumerate(r) if c == "#"]
+    w, h = len(grid[0]) * S, len(grid) * S
+    ox = (W - w - D) // 2
+    oy = 70 + (310 - h) // 2
+    tot = float(w + h + 2 * D)
+    for k in range(D, 0, -3):
+        for cx, cy in cells:
+            x0, y0 = ox + cx * S + k, oy + cy * S + k
+            col = _lerp_color(((x0 - ox) + (y0 - oy) + S) / tot, stops)
+            d.rectangle((x0, y0, x0 + S - 1, y0 + S - 1), fill=col)
+    for cx, cy in cells:
+        x0, y0 = ox + cx * S, oy + cy * S
+        d.rectangle((x0, y0, x0 + S - 1, y0 + S - 1), fill="#FFFFFF")
+    if over:
+        for y, r in enumerate(over):
+            for x, c in enumerate(r):
+                if c == "#":
+                    x0, y0 = ox + x * S, oy + y * S
+                    d.rectangle((x0, y0, x0 + S - 1, y0 + S - 1), fill="#0F0F0F")
+    text = title
+    size = 72
+    while size > 36 and d.textlength(text, font=_font(size, True)) > 1040:
+        size -= 2
+    f = _font(size, True)
+    while len(text) > 3 and d.textlength(text, font=f) > 1040:
+        text = text[:-2].rstrip() + "…"
+    d.text((W // 2, 490), text, font=f, fill="#FFFFFF", anchor="mm")
+    d.text((W // 2, 570), label, font=_font(32), fill="#8A8A8A", anchor="mm")
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90, optimize=True)
+    return buf.getvalue()
+
+
+ICON = {"main": "shield", "set": "gear", "types": "grid", "notif": "bell", "bl": "ban", "wl": "bubble"}
+_bn_cache = {}
+
+
+async def chan_banner(cid, icon, lang):
+    ch = chats.get(cid)
+    if not ch or not PIL_OK:
+        return None
+    key = (icon, ch["title"], lang)
+    if key in _bn_cache:
+        return _bn_cache[key]
+    try:
+        data = await asyncio.to_thread(
+            render_banner, icon, clean_title(ch["title"]), t(lang, "bn_" + icon)
+        )
+    except Exception:
+        log.exception("banner failed")
+        return None
+    if data:
+        if len(_bn_cache) > 150:
+            _bn_cache.clear()
+        _bn_cache[key] = data
+    return data
+
+
+def plain_len(text):
+    return len(html.unescape(re.sub(r"<[^>]+>", "", text)))
+
+
+async def show_chan(cb, cid, icon, text, kb):
+    """Екран каналу: ілюстрація з назвою каналу зверху, текст і кнопки знизу."""
+    png = None
+    if plain_len(text) <= 1000:
+        png = await chan_banner(cid, icon, lang_of(cb.from_user))
+    if png:
+        await show_photo(cb, png, text, kb, "banner.jpg")
+    else:
+        await show(cb, text, kb)
+
+
+async def send_chan(chat_id, cid, icon, lang, text, kb):
+    png = None
+    if plain_len(text) <= 1000:
+        png = await chan_banner(cid, icon, lang)
+    if png:
+        await bot.send_photo(chat_id, BufferedInputFile(png, "banner.jpg"), caption=text, reply_markup=kb)
+    else:
+        await bot.send_message(chat_id, text, reply_markup=kb)
+
+
 async def stats_screen(cid, lang, period):
     """Повертає (png | None, підпис або текст, клавіатура)."""
     if PIL_OK:
@@ -1620,7 +2052,7 @@ async def on_welcome_text(m: Message):
     await upd(cid, welcome=text)
     await m.answer(t(lang, "w_saved"))
     panel, kb = await panel_view(cid, lang, uid)
-    await m.answer(panel, reply_markup=kb)
+    await send_chan(m.chat.id, cid, "shield", lang, panel, kb)
 
 
 @dp.callback_query(F.data.startswith("sl:"))
@@ -1669,7 +2101,7 @@ async def on_open(cb: CallbackQuery):
     awaiting.pop(uid, None)
     sel[uid] = cid
     text, kb = await panel_view(cid, lang, uid)
-    await show(cb, text, kb)
+    await show_chan(cb, cid, "shield", text, kb)
     await cb.answer()
 
 
@@ -1752,14 +2184,15 @@ async def on_action(cb: CallbackQuery):
         await unblock(cid, int(arg))
         screen = "bl"
     elif act == "ts":
-        kind = random.choice(kinds_of(ch))
-        q, opts = build_captcha(kind, lang)
-        await bot.send_message(
-            uid,
-            t(lang, "test_head", kn=t(lang, "tn_" + kind), q=q),
-            reply_markup=captcha_markup(0, uid, opts),
-        )
+        test_fails.pop((cid, uid), None)
+        text, markup = captcha_message(ch, lang, cid, uid, prefix="t")
+        await bot.send_photo(uid, img("captcha"), caption=text, reply_markup=markup)
         await cb.answer(t(lang, "test_sent"))
+        return
+    elif act == "hp":
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_back"), f"x:se:{cid}")]])
+        await show(cb, t(lang, "set_help", n=RAID_N, m=RAID_MINUTES), kb)
+        await cb.answer()
         return
     elif act == "wl":
         awaiting[uid] = cid
@@ -1767,7 +2200,7 @@ async def on_action(cb: CallbackQuery):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [btn(t(lang, "b_default"), f"x:wr:{cid}"), btn(t(lang, "b_cancel"), f"o:{cid}")],
         ])
-        await show(cb, t(lang, "w_prompt", cur=cur), kb)
+        await show_chan(cb, cid, "bubble", t(lang, "w_prompt", cur=cur), kb)
         await cb.answer()
         return
 
@@ -1787,7 +2220,10 @@ async def on_action(cb: CallbackQuery):
         text, kb = notif_view(cid, lang)
     else:
         text, kb = await panel_view(cid, lang, uid)
-    await show(cb, text, kb)
+    if screen == "stats":
+        await show(cb, text, kb)
+    else:
+        await show_chan(cb, cid, ICON.get(screen, "shield"), text, kb)
     await cb.answer()
 
 
