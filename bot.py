@@ -18,6 +18,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import (
     BufferedInputFile,
     CallbackQuery,
+    FSInputFile,
     ChatJoinRequest,
     ChatMemberUpdated,
     InlineKeyboardButton,
@@ -607,6 +608,52 @@ def btn(text, data):
     return InlineKeyboardButton(text=text, callback_data=data)
 
 
+# ---------- оформлення: ілюстрації (1280x720 JPG поруч з bot.py) ----------
+DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def img(name):
+    return FSInputFile(os.path.join(DIR, f"{name}.jpg"))
+
+
+async def edit_card(chat_id, mid, key, text, kb=None):
+    """Міняє картинку й підпис у повідомленні; для старих текстових повідомлень — запасний варіант."""
+    try:
+        await bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=mid,
+            media=InputMediaPhoto(media=img(key), caption=text),
+            reply_markup=kb,
+        )
+        return True
+    except TelegramBadRequest as e:
+        if "not modified" in str(e):
+            return True
+    except TelegramAPIError:
+        return False
+    try:
+        await bot.edit_message_text(text, chat_id=chat_id, message_id=mid, reply_markup=kb)
+        return True
+    except TelegramAPIError:
+        return False
+
+
+async def show_home(cb, text, kb):
+    """Головне меню з ілюстрацією зверху."""
+    msg = cb.message
+    if getattr(msg, "photo", None):
+        try:
+            await msg.edit_media(media=InputMediaPhoto(media=img("menu"), caption=text), reply_markup=kb)
+        except TelegramBadRequest:
+            pass
+        return
+    try:
+        await msg.delete()
+    except TelegramAPIError:
+        pass
+    await bot.send_photo(msg.chat.id, img("menu"), caption=text, reply_markup=kb)
+
+
 def fmt_min(lang, v):
     if v == 0:
         return t(lang, "m_off")
@@ -832,9 +879,11 @@ async def on_join_request(req: ChatJoinRequest):
     try:
         if lang:
             text, markup = captcha_message(ch, lang, cid, uid)
+            pic = "captcha"
         else:
             text, markup = S["pick_lang"], picker_markup(f"cl:{cid}:{uid}")
-        msg = await bot.send_message(req.user_chat_id, text, reply_markup=markup)
+            pic = "menu"
+        msg = await bot.send_photo(req.user_chat_id, img(pic), caption=text, reply_markup=markup)
     except TelegramAPIError:
         log.warning("cannot message user %s", uid)
         return
@@ -871,10 +920,7 @@ async def on_applicant_lang(cb: CallbackQuery):
             "lang": lang,
         }
     text, markup = captcha_message(ch, lang, cid, uid)
-    try:
-        await cb.message.edit_text(text, reply_markup=markup)
-    except TelegramAPIError:
-        pass
+    await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
     await cb.answer()
 
 
@@ -917,10 +963,7 @@ async def on_answer(cb: CallbackQuery):
         if left > 0:
             pending[key] = info
             text, markup = captcha_message(ch, lang, cid, uid, head=t(lang, "retry", k=left))
-            try:
-                await cb.message.edit_text(text, reply_markup=markup)
-            except TelegramAPIError:
-                pass
+            await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
             await cb.answer()
             return
 
@@ -928,9 +971,11 @@ async def on_answer(cb: CallbackQuery):
     name, username = info["name"], info["username"]
 
     result = None
+    pic = "fail"
     if correct:
         if await try_approve(cid, uid):
             text = t(lang, "ok_join")
+            pic = "success"
             result = "approved"
         else:
             text = t(lang, "stale")
@@ -944,10 +989,7 @@ async def on_answer(cb: CallbackQuery):
             text += " " + t(lang, "wait", v=fmt_min(lang, cd))
         result = "declined"
 
-    try:
-        await cb.message.edit_text(text)
-    except Exception:
-        pass
+    await edit_card(cb.message.chat.id, cb.message.message_id, pic, text)
     await cb.answer()
 
     if result:
@@ -976,14 +1018,7 @@ async def timeout_loop():
                 if ch and ch["cooldown"] > 0:
                     if key not in blocks or blocks[key] is not None:
                         blocks[key] = datetime.now(timezone.utc) + timedelta(minutes=ch["cooldown"])
-                try:
-                    await bot.edit_message_text(
-                        t(p["lang"] or "en", "timeout_user"),
-                        chat_id=p["ucid"],
-                        message_id=p["mid"],
-                    )
-                except TelegramAPIError:
-                    pass
+                await edit_card(p["ucid"], p["mid"], "fail", t(p["lang"] or "en", "timeout_user"))
                 await notify(cid, uid, p["name"], p["username"], "timeout")
         except Exception:
             log.exception("timeout loop")
@@ -1517,10 +1552,10 @@ async def cmd_start(m: Message):
     awaiting.pop(m.from_user.id, None)
     lang = get_lang(m.from_user)
     if not lang:
-        await m.answer(S["pick_lang"], reply_markup=picker_markup("sl"))
+        await m.answer_photo(img("menu"), caption=S["pick_lang"], reply_markup=picker_markup("sl"))
         return
     text, kb = home_view(m.from_user.id, lang)
-    await m.answer(text, reply_markup=kb)
+    await m.answer_photo(img("menu"), caption=text, reply_markup=kb)
 
 
 @dp.message(Command("ban"), F.chat.type == "private")
@@ -1596,13 +1631,13 @@ async def on_set_lang(cb: CallbackQuery):
         return
     await set_lang(cb.from_user.id, lang)
     text, kb = home_view(cb.from_user.id, lang)
-    await show(cb, text, kb)
+    await show_home(cb, text, kb)
     await cb.answer(t(lang, "lang_set"))
 
 
 @dp.callback_query(F.data == "lg")
 async def on_lang_menu(cb: CallbackQuery):
-    await show(cb, S["pick_lang"], picker_markup("sl"))
+    await show_home(cb, S["pick_lang"], picker_markup("sl"))
     await cb.answer()
 
 
@@ -1610,7 +1645,7 @@ async def on_lang_menu(cb: CallbackQuery):
 async def on_home(cb: CallbackQuery):
     awaiting.pop(cb.from_user.id, None)
     text, kb = home_view(cb.from_user.id, lang_of(cb.from_user))
-    await show(cb, text, kb)
+    await show_home(cb, text, kb)
     await cb.answer()
 
 
@@ -1621,7 +1656,7 @@ async def on_find(cb: CallbackQuery):
     if todo:
         await asyncio.gather(*(is_admin(c, uid) for c in todo))
     text, kb = home_view(uid, lang_of(cb.from_user))
-    await show(cb, text, kb)
+    await show_home(cb, text, kb)
     await cb.answer()
 
 
