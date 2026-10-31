@@ -25,6 +25,7 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     InputMediaPhoto,
+    LinkPreviewOptions,
     Message,
 )
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
@@ -73,6 +74,9 @@ DEFAULT_CH = {
     "raid_guard": True,
     "weekly": False,
     "last_report": None,
+    "footer": False,
+    "footer_link": "",
+    "footer_text": "",
 }
 
 # ---------- стан у пам'яті ----------
@@ -462,6 +466,54 @@ S.update({
 })
 
 
+S.update({
+    "b_footer": ("🔗 Ссылка в постах", "🔗 Link in posts", "🔗 Посилання в постах"),
+    "b_ft_on": ("▶️ Включить", "▶️ Turn on", "▶️ Увімкнути"),
+    "b_ft_off": ("⏸ Выключить", "⏸ Turn off", "⏸ Вимкнути"),
+    "b_ft_text": ("✏️ Изменить текст", "✏️ Edit text", "✏️ Змінити текст"),
+    "ft_default": ("Подписаться на канал", "Subscribe to the channel", "Підписатися на канал"),
+    "ft_st_on": ("🟢 <b>Включено</b>", "🟢 <b>On</b>", "🟢 <b>Увімкнено</b>"),
+    "ft_st_off": ("🔴 <b>Выключено</b>", "🔴 <b>Off</b>", "🔴 <b>Вимкнено</b>"),
+    "ft_title": (
+        "🔗 <b>Ссылка в постах</b>\n──────────────\n{status}\n\n"
+        "В конец каждого нового поста бот добавляет ссылку для вступления. Если пост перешлют, по ссылке можно подать заявку, и она пройдёт капчу.\n\n"
+        "📝 Текст: <b>{label}</b>\n🔗 Ссылка: {link}{warn}",
+        "🔗 <b>Link in posts</b>\n──────────────\n{status}\n\n"
+        "The bot adds a join link to the end of every new post. If a post is forwarded, people can request to join through the link and will pass the captcha.\n\n"
+        "📝 Text: <b>{label}</b>\n🔗 Link: {link}{warn}",
+        "🔗 <b>Посилання в постах</b>\n──────────────\n{status}\n\n"
+        "В кінець кожного нового допису бот додає посилання для вступу. Якщо допис перешлють, за посиланням можна подати заявку, і вона пройде капчу.\n\n"
+        "📝 Текст: <b>{label}</b>\n🔗 Посилання: {link}{warn}",
+    ),
+    "ft_warn": (
+        "\n\n⚠️ У бота нет права «Редактировать сообщения». Выдайте его в настройках администраторов канала, иначе ссылка не будет добавляться.",
+        "\n\n⚠️ The bot lacks the “Edit messages” admin right. Grant it in the channel admin settings, otherwise the link will not be added.",
+        "\n\n⚠️ У бота немає права «Редагувати повідомлення». Надайте його в налаштуваннях адміністраторів каналу, інакше посилання не додаватиметься.",
+    ),
+    "ft_rights": (
+        "Нужны права «Приглашать пользователей» и «Редактировать сообщения». Выдайте их боту в настройках администраторов канала.",
+        "The bot needs the “Invite users” and “Edit messages” rights. Grant them in the channel admin settings.",
+        "Потрібні права «Запрошувати користувачів» і «Редагувати повідомлення». Надайте їх боту в налаштуваннях адміністраторів каналу.",
+    ),
+    "ft_err": (
+        "Не удалось создать ссылку. Попробуйте ещё раз.",
+        "Could not create the link. Please try again.",
+        "Не вдалося створити посилання. Спробуйте ще раз.",
+    ),
+    "ft_prompt": (
+        "✏️ Отправьте следующим сообщением новый текст ссылки (до 60 символов).\n\nСейчас: <b>{cur}</b>",
+        "✏️ Send the new link text in your next message (up to 60 characters).\n\nNow: <b>{cur}</b>",
+        "✏️ Надішліть наступним повідомленням новий текст посилання (до 60 символів).\n\nЗараз: <b>{cur}</b>",
+    ),
+    "ft_long": (
+        "Слишком длинно (максимум 60 символов). Попробуйте короче.",
+        "Too long (60 characters max). Try a shorter one.",
+        "Занадто довго (максимум 60 символів). Спробуйте коротше.",
+    ),
+    "ft_saved": ("✅ Текст сохранён.", "✅ Text saved.", "✅ Текст збережено."),
+})
+
+
 def t(lang, key, **kw):
     v = S[key]
     s = v if isinstance(v, str) else v[LI.get(lang, 1)]
@@ -591,6 +643,9 @@ async def init_db():
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS raid_guard boolean NOT NULL DEFAULT true;
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS weekly boolean NOT NULL DEFAULT false;
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS last_report date;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer boolean NOT NULL DEFAULT false;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_link text NOT NULL DEFAULT '';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_text text NOT NULL DEFAULT '';
         """
     )
     for r in await db.fetch("SELECT * FROM chats"):
@@ -1313,6 +1368,8 @@ async def panel_view(cid, lang, uid):
         [btn(t(lang, "b_welcome"), f"x:wl:{cid}"), btn(t(lang, "b_test"), f"x:ts:{cid}")],
         [btn(t(lang, "b_back"), "h")],
     ])
+    if ch.get("ctype") == "channel":
+        kb.inline_keyboard.insert(-1, [btn(t(lang, "b_footer"), f"x:fo:{cid}")])
     return text, kb
 
 
@@ -2040,14 +2097,22 @@ def waiting_text(m: Message) -> bool:
 @dp.message(F.chat.type == "private", waiting_text)
 async def on_welcome_text(m: Message):
     uid, lang = m.from_user.id, lang_of(m.from_user)
-    cid = awaiting.get(uid)
+    v = awaiting.get(uid)
+    footer_mode = isinstance(v, tuple)
+    cid = v[1] if footer_mode else v
     text = m.text.strip()
-    if len(text) > 300:
-        await m.answer(t(lang, "w_long"))
+    if len(text) > (60 if footer_mode else 300):
+        await m.answer(t(lang, "ft_long" if footer_mode else "w_long"))
         return
     awaiting.pop(uid, None)
     if cid not in chats or not await is_admin(cid, uid):
         await m.answer(t(lang, "no_access"))
+        return
+    if footer_mode:
+        await upd(cid, footer_text=text)
+        await m.answer(t(lang, "ft_saved"))
+        ftext, fkb = await footer_view(cid, lang)
+        await send_chan(m.chat.id, cid, "shield", lang, ftext, fkb)
         return
     await upd(cid, welcome=text)
     await m.answer(t(lang, "w_saved"))
@@ -2131,7 +2196,7 @@ async def on_action(cb: CallbackQuery):
         return
     ch = chats[cid]
     sel[uid] = cid
-    if act != "wl":
+    if act not in ("wl", "fl"):
         awaiting.pop(uid, None)
     screen, period = "main", "d"
 
@@ -2175,6 +2240,25 @@ async def on_action(cb: CallbackQuery):
             on.append(arg)
         await upd(cid, types=",".join(k for k in TYPES if k in on))
         screen = "types"
+    elif act == "fo":
+        screen = "footer"
+    elif act == "ft":
+        if ch["footer"]:
+            await upd(cid, footer=False)
+        else:
+            ok, err = await footer_prepare(cid, lang)
+            if not ok:
+                await cb.answer(err, show_alert=True)
+                return
+            await upd(cid, footer=True)
+        screen = "footer"
+    elif act == "fl":
+        awaiting[uid] = ("f", cid)
+        cur = esc(ch.get("footer_text") or t(lang, "ft_default"))
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:fo:{cid}")]])
+        await show_chan(cb, cid, "bubble", t(lang, "ft_prompt", cur=cur), kb)
+        await cb.answer()
+        return
     elif act == "st":
         screen = "stats"
         period = arg if arg in ("d", "w", "a") else "d"
@@ -2218,6 +2302,8 @@ async def on_action(cb: CallbackQuery):
         text, kb = settings_view(cid, lang)
     elif screen == "notif":
         text, kb = notif_view(cid, lang)
+    elif screen == "footer":
+        text, kb = await footer_view(cid, lang)
     else:
         text, kb = await panel_view(cid, lang, uid)
     if screen == "stats":
@@ -2225,6 +2311,130 @@ async def on_action(cb: CallbackQuery):
     else:
         await show_chan(cb, cid, ICON.get(screen, "shield"), text, kb)
     await cb.answer()
+
+
+
+# ---------- посилання в кінці постів ----------
+
+albums = {}
+footer_tasks = set()
+
+
+async def footer_rights_ok(cid):
+    try:
+        me = await bot.get_chat_member(cid, bot.id)
+    except TelegramAPIError:
+        return None, None
+    if st(me) != "administrator":
+        return False, False
+    return bool(getattr(me, "can_invite_users", False)), bool(getattr(me, "can_edit_messages", False))
+
+
+async def footer_prepare(cid, lang):
+    inv, edt = await footer_rights_ok(cid)
+    if inv is None:
+        return False, t(lang, "ft_err")
+    if not inv or not edt:
+        return False, t(lang, "ft_rights")
+    ch = chats[cid]
+    if not ch.get("footer_link"):
+        try:
+            link = await bot.create_chat_invite_link(cid, name="Footer", creates_join_request=True)
+        except TelegramAPIError:
+            return False, t(lang, "ft_err")
+        await upd(cid, footer_link=link.invite_link)
+    if not ch.get("footer_text"):
+        await upd(cid, footer_text=t(lang, "ft_default"))
+    return True, ""
+
+
+async def footer_view(cid, lang):
+    ch = chats[cid]
+    warn = ""
+    if ch["footer"]:
+        _, edt = await footer_rights_ok(cid)
+        if edt is False:
+            warn = t(lang, "ft_warn")
+    link = f"<code>{esc(ch['footer_link'])}</code>" if ch.get("footer_link") else "—"
+    text = t(
+        lang, "ft_title",
+        status=t(lang, "ft_st_on" if ch["footer"] else "ft_st_off"),
+        label=esc(ch.get("footer_text") or t(lang, "ft_default")),
+        link=link,
+        warn=warn,
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [btn(t(lang, "b_ft_off" if ch["footer"] else "b_ft_on"), f"x:ft:{cid}")],
+        [btn(t(lang, "b_ft_text"), f"x:fl:{cid}")],
+        [btn(t(lang, "b_back"), f"o:{cid}")],
+    ])
+    return text, kb
+
+
+def footer_html(ch):
+    return f'<a href="{esc(ch["footer_link"])}">🔗 {esc(ch["footer_text"])}</a>'
+
+
+async def add_footer(m, ch):
+    link = ch["footer_link"]
+    plain = m.text or m.caption or ""
+    body = m.html_text if plain else ""
+    if link in body:
+        return
+    foot = footer_html(ch)
+    extra = 4 + len(ch["footer_text"])
+    try:
+        if m.text is not None:
+            if len(plain) + extra > 4096:
+                return
+            has_link = any(e.type in ("url", "text_link") for e in (m.entities or []))
+            lpo = m.link_preview_options if has_link else LinkPreviewOptions(is_disabled=True)
+            await bot.edit_message_text(
+                f"{body}\n\n{foot}",
+                chat_id=m.chat.id,
+                message_id=m.message_id,
+                reply_markup=m.reply_markup,
+                link_preview_options=lpo,
+            )
+        elif any((m.photo, m.video, m.animation, m.document, m.audio, m.voice)):
+            if len(plain) + extra > 1024:
+                return
+            await bot.edit_message_caption(
+                chat_id=m.chat.id,
+                message_id=m.message_id,
+                caption=f"{body}\n\n{foot}" if body else foot,
+                reply_markup=m.reply_markup,
+            )
+    except TelegramAPIError as e:
+        log.warning("footer failed in %s: %s", m.chat.id, e)
+
+
+async def finish_album(key):
+    await asyncio.sleep(3)
+    msgs = albums.pop(key, [])
+    ch = chats.get(key[0])
+    if not msgs or not ch or not ch.get("footer") or not ch.get("footer_link"):
+        return
+    target = next((x for x in msgs if x.caption), None) or min(msgs, key=lambda x: x.message_id)
+    await add_footer(target, ch)
+
+
+@dp.channel_post()
+async def on_channel_post(m: Message):
+    ch = chats.get(m.chat.id)
+    if not ch or not ch.get("footer") or not ch.get("footer_link"):
+        return
+    if m.media_group_id:
+        key = (m.chat.id, m.media_group_id)
+        if key in albums:
+            albums[key].append(m)
+        else:
+            albums[key] = [m]
+            task = asyncio.create_task(finish_album(key))
+            footer_tasks.add(task)
+            task.add_done_callback(footer_tasks.discard)
+        return
+    await add_footer(m, ch)
 
 
 # ---------- запуск ----------
@@ -2236,7 +2446,7 @@ async def on_startup(bot: Bot):
     await bot.set_webhook(
         f"{BASE_URL}/webhook",
         secret_token=SECRET,
-        allowed_updates=["message", "callback_query", "chat_join_request", "my_chat_member"],
+        allowed_updates=["message", "callback_query", "chat_join_request", "my_chat_member", "channel_post"],
         drop_pending_updates=False,
     )
     background.append(asyncio.create_task(timeout_loop()))
