@@ -79,6 +79,9 @@ DEFAULT_CH = {
     "footer_text": "",
     "footer_sep": "─" * 18,
     "footer_pre": "🔗 ",
+    "footer_suf": "",
+    "footer_gap": 1,
+    "footer_font": "normal",
 }
 
 # ---------- стан у пам'яті ----------
@@ -521,11 +524,6 @@ S.update({
         "🔗 Send your own link (starting with https://). For requests to pass the captcha, the link must have admin approval turned on. The “Auto link” button creates such a link for you.\n\nNow: {cur}",
         "🔗 Надішліть своє посилання (починається з https://). Щоб заявки проходили капчу, у посиланні має бути увімкнене схвалення заявок адміністратором. Кнопка «Авто-посилання» створить таке посилання сама.\n\nЗараз: {cur}",
     ),
-    "ft_styles": (
-        "🎨 <b>Стили оформления</b>\n\nВыберите готовый вид. Текст ссылки останется вашим, меняются только линия и значок. Линию и текст потом можно изменить вручную.\n\n{list}",
-        "🎨 <b>Styles</b>\n\nPick a ready-made look. Your link text stays, only the line and the icon change. You can edit the line and the text by hand afterwards.\n\n{list}",
-        "🎨 <b>Стилі оформлення</b>\n\nОберіть готовий вигляд. Текст посилання залишиться вашим, змінюються лише лінія та значок. Лінію й текст потім можна змінити вручну.\n\n{list}",
-    ),
     "ft_long": (
         "Слишком длинно (максимум {n} символов). Попробуйте короче.",
         "Too long ({n} characters max). Try a shorter one.",
@@ -539,6 +537,70 @@ S.update({
     "ft_saved": ("✅ Текст сохранён.", "✅ Text saved.", "✅ Текст збережено."),
     "ft_sep_saved": ("✅ Линия сохранена.", "✅ Line saved.", "✅ Лінію збережено."),
     "ft_link_saved": ("✅ Ссылка сохранена.", "✅ Link saved.", "✅ Посилання збережено."),
+})
+
+S.update({
+    "b_ft_sym": ("✨ Символы", "✨ Symbols", "✨ Символи"),
+    "b_ft_gap": ("↕️ Отступ: {v}", "↕️ Spacing: {v}", "↕️ Відступ: {v}"),
+    "b_ft_font": ("🔤 Шрифт", "🔤 Font", "🔤 Шрифт"),
+    "b_ft_reset": ("♻️ Сбросить вид", "♻️ Reset look", "♻️ Скинути вигляд"),
+    "b_ft_nopre": ("🚫 Без значка", "🚫 No icon", "🚫 Без значка"),
+    "b_ft_nosep": ("🚫 Без линии", "🚫 No line", "🚫 Без лінії"),
+    "gap_sample": ("Текст вашего поста…", "Your post text…", "Текст вашого допису…"),
+    "fn_normal": ("Обычный", "Normal", "Звичайний"),
+    "sy_lines": ("📏 Линии", "📏 Lines", "📏 Лінії"),
+    "sy_arrows": ("➡️ Стрелки", "➡️ Arrows", "➡️ Стрілки"),
+    "sy_stars": ("⭐ Звёзды и узоры", "⭐ Stars & ornaments", "⭐ Зірки й візерунки"),
+    "sy_emoji": ("😀 Эмодзи", "😀 Emoji", "😀 Емодзі"),
+    "sy_frames": ("【】 Рамки", "【】 Frames", "【】 Рамки"),
+    "sy_bullets": ("• Маркеры", "• Bullets", "• Маркери"),
+    "sy_hint_line": (
+        "Нажмите на линию, чтобы поставить её над ссылкой. Нажатие на символ в списке ниже копирует его.",
+        "Tap a line to put it above the link. Tapping a symbol in the list below copies it.",
+        "Натисніть на лінію, щоб поставити її над посиланням. Натискання на символ у списку нижче копіює його.",
+    ),
+    "sy_hint_pre": (
+        "Нажмите на символ, чтобы поставить его перед текстом ссылки. Нажатие на символ в списке ниже копирует его.",
+        "Tap a symbol to put it before the link text. Tapping a symbol in the list below copies it.",
+        "Натисніть на символ, щоб поставити його перед текстом посилання. Натискання на символ у списку нижче копіює його.",
+    ),
+    "sy_hint_wrap": (
+        "Нажмите на рамку, чтобы обрамить ею текст ссылки. Нажатие на символ в списке ниже копирует его.",
+        "Tap a frame to wrap the link text in it. Tapping a symbol in the list below copies it.",
+        "Натисніть на рамку, щоб обрамити нею текст посилання. Натискання на символ у списку нижче копіює його.",
+    ),
+    "sy_title": (
+        "✨ <b>Символы</b>\n\nВыберите категорию. Символ из категории сразу попадает в оформление ссылки. Любой символ можно также скопировать и вставить в свой текст или линию.\n\n<b>Вид:</b>\n{preview}",
+        "✨ <b>Symbols</b>\n\nPick a category. A symbol from a category goes straight into the link look. Any symbol can also be copied and pasted into your own text or line.\n\n<b>Look:</b>\n{preview}",
+        "✨ <b>Символи</b>\n\nОберіть категорію. Символ із категорії одразу потрапляє в оформлення посилання. Будь-який символ також можна скопіювати й вставити у свій текст чи лінію.\n\n<b>Вигляд:</b>\n{preview}",
+    ),
+    "sy_cat": (
+        "{title}\n\n<b>Вид:</b>\n{preview}\n\n{hint}\n\n{items}",
+        "{title}\n\n<b>Look:</b>\n{preview}\n\n{hint}\n\n{items}",
+        "{title}\n\n<b>Вигляд:</b>\n{preview}\n\n{hint}\n\n{items}",
+    ),
+    "gap_title": (
+        "↕️ <b>Отступ</b>\n\nСколько пустых строк между постом и ссылкой. Сейчас: <b>{n}</b>\n\n<b>Вид:</b>\n{preview}",
+        "↕️ <b>Spacing</b>\n\nHow many empty lines between the post and the link. Now: <b>{n}</b>\n\n<b>Look:</b>\n{preview}",
+        "↕️ <b>Відступ</b>\n\nСкільки порожніх рядків між дописом і посиланням. Зараз: <b>{n}</b>\n\n<b>Вигляд:</b>\n{preview}",
+    ),
+    "font_title": (
+        "🔤 <b>Шрифт</b>\n\nМеняет вид латинских букв и цифр в тексте ссылки. Кириллица не меняется.\n\n<b>Вид:</b>\n{preview}",
+        "🔤 <b>Font</b>\n\nChanges the look of Latin letters and digits in the link text. Cyrillic stays as is.\n\n<b>Look:</b>\n{preview}",
+        "🔤 <b>Шрифт</b>\n\nЗмінює вигляд латинських літер і цифр у тексті посилання. Кирилиця не змінюється.\n\n<b>Вигляд:</b>\n{preview}",
+    ),
+    "ft_styles": (
+        "🎨 <b>Стили оформления</b>\n\n10 готовых видов. Текст ссылки останется вашим, меняются линия, значок и рамка. Всё можно потом изменить вручную.\n\n{list}",
+        "🎨 <b>Styles</b>\n\n10 ready-made looks. Your link text stays, the line, icon and frame change. You can edit everything by hand afterwards.\n\n{list}",
+        "🎨 <b>Стилі оформлення</b>\n\n10 готових виглядів. Текст посилання залишиться вашим, змінюються лінія, значок і рамка. Усе потім можна змінити вручну.\n\n{list}",
+    ),
+    "bn_link": ("Ссылка в постах", "Link in posts", "Посилання в постах"),
+    "bn_star": ("Символы", "Symbols", "Символи"),
+    "bn_gap": ("Отступ", "Spacing", "Відступ"),
+    "bn_font": ("Шрифт ссылки", "Link font", "Шрифт посилання"),
+    "bn_styles": ("Готовые стили", "Ready-made styles", "Готові стилі"),
+    "bn_sep": ("Разделитель", "Separator", "Роздільник"),
+    "bn_text": ("Текст ссылки", "Link text", "Текст посилання"),
 })
 
 
@@ -676,6 +738,9 @@ async def init_db():
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_text text NOT NULL DEFAULT '';
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_sep text NOT NULL DEFAULT '──────────────────';
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_pre text NOT NULL DEFAULT '🔗 ';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_suf text NOT NULL DEFAULT '';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_gap integer NOT NULL DEFAULT 1;
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_font text NOT NULL DEFAULT 'normal';
         """
     )
     for r in await db.fetch("SELECT * FROM chats"):
@@ -1824,6 +1889,73 @@ ICON_GRIDS = {
 ............."""),
     ),
 }
+
+
+def _grid_from(cells, w, h):
+    return ["".join("#" if (x, y) in cells else "." for x in range(w)) for y in range(h)]
+
+
+def _ring(x0, y0, x1, y1, th=2):
+    out = set()
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            corner = x in (x0, x1) and y in (y0, y1)
+            inner = x0 + th <= x <= x1 - th and y0 + th <= y <= y1 - th
+            if not corner and not inner:
+                out.add((x, y))
+    return out
+
+
+_link = _ring(0, 0, 8, 8) | _ring(9, 0, 17, 8) | {(x, y) for x in range(6, 12) for y in range(3, 6)}
+_star = {
+    (x, y) for x in range(15) for y in range(15)
+    if abs(x - 7) ** (2 / 3) + abs(y - 7) ** (2 / 3) <= 7 ** (2 / 3) + 0.05
+}
+_gap = set()
+for _y, _w in ((0, 11), (2, 8), (4, 10)):
+    _gap |= {(x, _y) for x in range(_w)}
+_gap |= {(13, y) for y in range(3, 10)} | {(12, 4), (14, 4), (12, 8), (14, 8)}
+_gap |= {(x, y) for x in range(11) for y in range(10, 13)}
+ICON_GRIDS["link"] = (_grid_from(_link, 18, 9), None)
+ICON_GRIDS["star"] = (_grid_from(_star, 15, 15), None)
+ICON_GRIDS["gap"] = (_grid_from(_gap, 15, 13), None)
+
+_font_g = _g("""
+.....###.....
+....#####....
+...#######...
+...###.###...
+..###...###..
+..###...###..
+.###########.
+.###########.
+.###.....###.
+###.......###
+###.......###""")
+_sl = ((1, 3), (6, 9), (11, 5))
+_styles = set()
+for _r, _hx in _sl:
+    _styles |= {(x, _r) for x in range(15)}
+    _styles |= {(x, y) for x in range(_hx - 1, _hx + 2) for y in range(_r - 1, _r + 2)}
+_sep = {(x, 0) for x in range(15)} | {(x, 1) for x in range(11)}
+_sep |= {(x, y) for x in range(0, 15, 3) for y in (5, 6)}
+_sep |= {(x, 10) for x in range(15)} | {(x, 11) for x in range(9)}
+_text_g = _g("""
+###############
+###############
+###############
+###############
+.....#####.....
+.....#####.....
+.....#####.....
+.....#####.....
+.....#####.....
+.....#####.....
+.....#####.....""")
+ICON_GRIDS["font"] = (_font_g, None)
+ICON_GRIDS["styles"] = (_grid_from(_styles, 15, 13), _grid_from({(hx, r) for r, hx in _sl}, 15, 13))
+ICON_GRIDS["sep"] = (_grid_from(_sep, 15, 12), None)
+ICON_GRIDS["text"] = (_text_g, None)
 BANNER_BLOCKS = [
     (50, 100, 225, 65), (50, 165, 125, 65), (1000, 950, 225, 65), (1100, 1015, 125, 65),
     (950, 175, 175, 55), (1025, 230, 100, 55), (75, 1050, 175, 55), (75, 1105, 100, 55),
@@ -1840,10 +1972,33 @@ def _lerp_color(t, stops):
     return stops[-1][1]
 
 
+# розділ «Посилання в постах»: готові ілюстрації (jpg поруч з bot.py) + маленька назва каналу знизу
+FOOTER_PICS = {
+    "link": "footer", "styles": "styles", "font": "font", "text": "text",
+    "sep": "separator", "star": "symbols", "gap": "spacing",
+}
+
+
+def render_pic_banner(path, title):
+    img = Image.open(path).convert("RGB")
+    d = ImageDraw.Draw(img)
+    text = title
+    f = _font(34, True)
+    while len(text) > 3 and d.textlength(text, font=f) > 1000:
+        text = text[:-2].rstrip() + "…"
+    d.text((img.width // 2, 668), text, font=f, fill="#8A8A8A", anchor="mm")
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=90, optimize=True)
+    return buf.getvalue()
+
+
 def render_banner(icon, title, label):
     """Ілюстрація 1280x720: піксельна іконка + назва каналу. JPEG-байти або None."""
     if not PIL_OK or _font(10) is None or _font(10, True) is None:
         return None
+    pic = FOOTER_PICS.get(icon)
+    if pic and os.path.exists(os.path.join(DIR, pic + ".jpg")):
+        return render_pic_banner(os.path.join(DIR, pic + ".jpg"), title)
     grid, over = ICON_GRIDS[icon]
     W, H, S, D = 1280, 720, 20, 26
     stops = [(0.0, (230, 230, 230)), (0.5, (122, 122, 122)), (1.0, (43, 43, 43))]
@@ -1884,7 +2039,7 @@ def render_banner(icon, title, label):
     return buf.getvalue()
 
 
-ICON = {"main": "shield", "set": "gear", "types": "grid", "notif": "bell", "bl": "ban", "wl": "bubble"}
+ICON = {"main": "shield", "set": "gear", "types": "grid", "notif": "bell", "bl": "ban", "wl": "bubble", "footer": "link", "styles": "styles"}
 _bn_cache = {}
 
 
@@ -2161,7 +2316,7 @@ async def on_welcome_text(m: Message):
             done = "ft_link_saved"
         await m.answer(t(lang, done))
         ftext, fkb = await footer_view(cid, lang)
-        await send_chan(m.chat.id, cid, "shield", lang, ftext, fkb)
+        await send_chan(m.chat.id, cid, "link", lang, ftext, fkb)
         return
     await upd(cid, welcome=text)
     await m.answer(t(lang, "w_saved"))
@@ -2305,7 +2460,7 @@ async def on_action(cb: CallbackQuery):
         awaiting[uid] = ("f", cid)
         cur = esc(ch.get("footer_text") or t(lang, "ft_default"))
         kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:fo:{cid}")]])
-        await show_chan(cb, cid, "bubble", t(lang, "ft_prompt", cur=cur), kb)
+        await show_chan(cb, cid, "text", t(lang, "ft_prompt", cur=cur), kb)
         await cb.answer()
         return
     elif act == "fy":
@@ -2313,8 +2468,67 @@ async def on_action(cb: CallbackQuery):
     elif act == "fp":
         idx = int(arg) if arg and arg.isdigit() else -1
         if 0 <= idx < len(PRESETS):
-            await upd(cid, footer_sep=PRESETS[idx][0], footer_pre=PRESETS[idx][1])
+            sep_, pre_, suf_ = PRESETS[idx]
+            await upd(cid, footer_sep=sep_, footer_pre=pre_, footer_suf=suf_)
         screen = "footer"
+    elif act == "fr":
+        sep_, pre_, suf_ = PRESETS[0]
+        await upd(cid, footer_sep=sep_, footer_pre=pre_, footer_suf=suf_, footer_gap=1, footer_font="normal")
+        screen = "footer"
+    elif act == "sy":
+        text, kb = sym_home(cid, lang)
+        await show_chan(cb, cid, "star", text, kb)
+        await cb.answer()
+        return
+    elif act == "sc":
+        k = int(arg) if arg and arg.isdigit() else -1
+        if not 0 <= k < len(SYMS):
+            await cb.answer()
+            return
+        text, kb = sym_cat(cid, lang, k)
+        await show_chan(cb, cid, "star", text, kb)
+        await cb.answer()
+        return
+    elif act == "sa":
+        k = int(arg) if arg and arg.isdigit() else -1
+        item = parts[4] if len(parts) > 4 else ""
+        if not 0 <= k < len(SYMS):
+            await cb.answer()
+            return
+        _, kind, items = SYMS[k]
+        if item == "n":
+            if kind == "line":
+                await upd(cid, footer_sep="")
+            elif kind == "pre":
+                await upd(cid, footer_pre="")
+            else:
+                await upd(cid, footer_pre="", footer_suf="")
+        elif item.isdigit() and int(item) < len(items):
+            v = items[int(item)]
+            if kind == "line":
+                await upd(cid, footer_sep=v)
+            elif kind == "pre":
+                await upd(cid, footer_pre=v + " ")
+            else:
+                await upd(cid, footer_pre=v[0] + " ", footer_suf=" " + v[1])
+        text, kb = sym_cat(cid, lang, k)
+        await show_chan(cb, cid, "star", text, kb)
+        await cb.answer()
+        return
+    elif act in ("gs", "gp"):
+        if act == "gp" and arg and arg.isdigit() and int(arg) in GAPS:
+            await upd(cid, footer_gap=int(arg))
+        text, kb = gap_view(cid, lang)
+        await show_chan(cb, cid, "gap", text, kb)
+        await cb.answer()
+        return
+    elif act in ("fz", "fv"):
+        if act == "fv" and arg in FONT_NAMES:
+            await upd(cid, footer_font=arg)
+        text, kb = font_view(cid, lang)
+        await show_chan(cb, cid, "font", text, kb)
+        await cb.answer()
+        return
     elif act == "fa":
         ok, err = await footer_new_link(cid, lang)
         if not ok:
@@ -2325,7 +2539,7 @@ async def on_action(cb: CallbackQuery):
         awaiting[uid] = ("s", cid)
         cur = f"<code>{esc(ch['footer_sep'])}</code>" if ch.get("footer_sep") else "—"
         kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:fo:{cid}")]])
-        await show_chan(cb, cid, "bubble", t(lang, "ft_sep_prompt", cur=cur), kb)
+        await show_chan(cb, cid, "sep", t(lang, "ft_sep_prompt", cur=cur), kb)
         await cb.answer()
         return
     elif act == "fk":
@@ -2334,7 +2548,7 @@ async def on_action(cb: CallbackQuery):
         kb = InlineKeyboardMarkup(inline_keyboard=[
             [btn(t(lang, "b_ft_auto"), f"x:fa:{cid}"), btn(t(lang, "b_cancel"), f"x:fo:{cid}")],
         ])
-        await show_chan(cb, cid, "bubble", t(lang, "ft_link_prompt", cur=cur), kb)
+        await show_chan(cb, cid, "link", t(lang, "ft_link_prompt", cur=cur), kb)
         await cb.answer()
         return
     elif act == "st":
@@ -2397,24 +2611,118 @@ async def on_action(cb: CallbackQuery):
 # ---------- посилання в кінці постів ----------
 
 PRESETS = [
-    ("─" * 18, "🔗 "),
-    ("━" * 18, "➤ "),
-    ("═" * 18, "✦ "),
-    ("▬" * 14, "» "),
-    ("", "👉 "),
+    ("─" * 18, "🔗 ", ""),
+    ("━" * 18, "➤ ", ""),
+    ("═" * 18, "✦ ", " ✦"),
+    ("▬" * 14, "» ", " «"),
+    ("", "👉 ", ""),
+    ("───── ✦ ─────", "【 ", " 】"),
+    ("· · · · · · · ·", "▸ ", ""),
+    ("〰" * 6, "💬 ", ""),
+    ("▁" * 18, "◈ ", " ◈"),
+    ("╼" + "━" * 13 + "╾", "⚡ ", " ⚡"),
 ]
+
+# категорії символів: (ключ, що змінює, список)
+SYMS = [
+    ("lines", "line", [
+        "─" * 18, "━" * 18, "═" * 18, "▬" * 14, "▁" * 18, "┄" * 18,
+        "───── ✦ ─────", "═══ ◈ ═══", "╼" + "━" * 13 + "╾", "· · · · · · · ·",
+        "〰" * 6, "▪ ▪ ▪ ▪ ▪ ▪",
+    ]),
+    ("arrows", "pre", ["➤", "➜", "➔", "⇨", "▶", "►", "»", "›", "↳", "↗", "👉", "⏩", "👇", "🔽"]),
+    ("stars", "pre", [
+        "✦", "✧", "★", "☆", "✪", "✯", "❖", "◆", "◈", "❂",
+        "✺", "❈", "✿", "❀", "⚜", "✨", "💫", "⭐", "🌟", "💠",
+    ]),
+    ("emoji", "pre", [
+        "🔗", "📢", "🔔", "📣", "💬", "🚀", "🔥", "💎", "👑",
+        "⚡", "🌐", "📌", "🎯", "💌", "📲", "🔐", "🧲", "🎁",
+    ]),
+    ("frames", "wrap", [
+        ("【", "】"), ("『", "』"), ("「", "」"), ("《", "》"), ("〈", "〉"), ("⟦", "⟧"),
+        ("✦", "✦"), ("★", "★"), ("•", "•"), ("«", "»"), ("▸", "◂"), ("꧁", "꧂"),
+        ("◤", "◥"), ("❮", "❯"),
+    ]),
+    ("bullets", "pre", ["•", "▪", "▫", "●", "○", "◉", "◦", "‣", "▹", "➢", "✔", "✅", "☑", "❯", "❱", "⁍"]),
+]
+
 FT_LIMITS = {"f": 60, "s": 40, "l": 200}
+GAPS = (0, 1, 2, 3, 4)
+FONT_NAMES = ("normal", "wide", "bold", "mono", "double", "circle", "caps")
 albums = {}
 footer_tasks = set()
 
 
-def render_footer(sep, pre, text, link):
-    a = f'<a href="{esc(link)}">{esc(pre)}{esc(text)}</a>'
+def _shift(up, lo, dg, extra=None):
+    m = {}
+    for i in range(26):
+        m[chr(65 + i)] = chr(up + i)
+        m[chr(97 + i)] = chr(lo + i)
+    for i in range(10):
+        m[str(i)] = chr(dg + i)
+    if extra:
+        m.update(extra)
+    return m
+
+
+def _circle():
+    m = {}
+    for i in range(26):
+        m[chr(65 + i)] = chr(0x24B6 + i)
+        m[chr(97 + i)] = chr(0x24D0 + i)
+    for i, c in enumerate("⓪①②③④⑤⑥⑦⑧⑨"):
+        m[str(i)] = c
+    return m
+
+
+def _caps():
+    small = "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ"
+    m = {}
+    for i in range(26):
+        m[chr(65 + i)] = small[i]
+        m[chr(97 + i)] = small[i]
+    return m
+
+
+FONTS = {
+    "normal": None,
+    "wide": _shift(0xFF21, 0xFF41, 0xFF10),
+    "bold": _shift(0x1D5D4, 0x1D5EE, 0x1D7EC),
+    "mono": _shift(0x1D670, 0x1D68A, 0x1D7F6),
+    "double": _shift(0x1D538, 0x1D552, 0x1D7D8,
+                     {"C": "ℂ", "H": "ℍ", "N": "ℕ", "P": "ℙ", "Q": "ℚ", "R": "ℝ", "Z": "ℤ"}),
+    "circle": _circle(),
+    "caps": _caps(),
+}
+
+
+def fancy(text, font):
+    m = FONTS.get(font)
+    return text if not m else "".join(m.get(c, c) for c in text)
+
+
+def spacer(gap):
+    return "\n" + "\u2800\n" * gap
+
+
+def render_footer(sep, pre, text, link, suf="", font="normal"):
+    a = f'<a href="{esc(link)}">{esc(pre)}{esc(fancy(text, font))}{esc(suf)}</a>'
     return f"{esc(sep)}\n{a}" if sep else a
 
 
 def footer_html(ch):
-    return render_footer(ch["footer_sep"], ch["footer_pre"], ch["footer_text"], ch["footer_link"])
+    return render_footer(
+        ch["footer_sep"], ch["footer_pre"], ch["footer_text"], ch["footer_link"],
+        ch["footer_suf"], ch["footer_font"],
+    )
+
+
+def full_preview(ch, lang):
+    label = ch.get("footer_text") or t(lang, "ft_default")
+    href = ch.get("footer_link") or "https://t.me/"
+    foot = render_footer(ch["footer_sep"], ch["footer_pre"], label, href, ch["footer_suf"], ch["footer_font"])
+    return f"{esc(t(lang, 'gap_sample'))}{spacer(ch['footer_gap'])}{foot}"
 
 
 def norm_link(s):
@@ -2471,21 +2779,19 @@ async def footer_view(cid, lang):
         _, edt = await footer_rights_ok(cid)
         if edt is False:
             warn = t(lang, "ft_warn")
-    label = ch.get("footer_text") or t(lang, "ft_default")
-    href = ch.get("footer_link") or "https://t.me/"
-    preview = render_footer(ch["footer_sep"], ch["footer_pre"], label, href)
     link = f"<code>{esc(ch['footer_link'])}</code>" if ch.get("footer_link") else "—"
     text = t(
         lang, "ft_title",
         status=t(lang, "ft_st_on" if ch["footer"] else "ft_st_off"),
-        preview=preview,
+        preview=full_preview(ch, lang),
         link=link,
         warn=warn,
     )
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [btn(t(lang, "b_ft_off" if ch["footer"] else "b_ft_on"), f"x:ft:{cid}")],
         [btn(t(lang, "b_ft_text"), f"x:fl:{cid}"), btn(t(lang, "b_ft_sep"), f"x:fs:{cid}")],
-        [btn(t(lang, "b_ft_styles"), f"x:fy:{cid}")],
+        [btn(t(lang, "b_ft_styles"), f"x:fy:{cid}"), btn(t(lang, "b_ft_sym"), f"x:sy:{cid}")],
+        [btn(t(lang, "b_ft_gap", v=ch["footer_gap"]), f"x:gs:{cid}"), btn(t(lang, "b_ft_font"), f"x:fz:{cid}")],
         [btn(t(lang, "b_ft_link"), f"x:fk:{cid}"), btn(t(lang, "b_ft_auto"), f"x:fa:{cid}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
@@ -2497,12 +2803,70 @@ def styles_view(cid, lang):
     label = ch.get("footer_text") or t(lang, "ft_default")
     href = ch.get("footer_link") or "https://t.me/"
     items = []
-    for i, (sep, pre) in enumerate(PRESETS, 1):
-        items.append(f"<b>{i}.</b>\n{render_footer(sep, pre, label, href)}")
+    for i, (sep, pre, suf) in enumerate(PRESETS, 1):
+        items.append(f"<b>{i}.</b>\n{render_footer(sep, pre, label, href, suf, ch['footer_font'])}")
     text = t(lang, "ft_styles", list="\n\n".join(items))
     nums = [btn(str(i + 1), f"x:fp:{cid}:{i}") for i in range(len(PRESETS))]
-    kb = InlineKeyboardMarkup(inline_keyboard=[nums, [btn(t(lang, "b_back"), f"x:fo:{cid}")]])
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        nums[:5], nums[5:],
+        [btn(t(lang, "b_ft_reset"), f"x:fr:{cid}")],
+        [btn(t(lang, "b_back"), f"x:fo:{cid}")],
+    ])
     return text, kb
+
+
+def sym_home(cid, lang):
+    ch = chats[cid]
+    rows, row = [], []
+    for k, (key, kind, items) in enumerate(SYMS):
+        row.append(btn(t(lang, "sy_" + key), f"x:sc:{cid}:{k}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([btn(t(lang, "b_back"), f"x:fo:{cid}")])
+    return t(lang, "sy_title", preview=full_preview(ch, lang)), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def sym_cat(cid, lang, k):
+    ch = chats[cid]
+    key, kind, items = SYMS[k]
+    shown = [f"{a} {b}" for a, b in items] if kind == "wrap" else list(items)
+    codes = " ".join(f"<code>{esc(x)}</code>" for x in shown)
+    text = t(
+        lang, "sy_cat",
+        title=f"<b>{t(lang, 'sy_' + key)}</b>",
+        preview=full_preview(ch, lang),
+        hint=t(lang, "sy_hint_" + kind),
+        items=codes,
+    )
+    per = {"line": 2, "wrap": 4}.get(kind, 6)
+    buttons = [btn(shown[i], f"x:sa:{cid}:{k}:{i}") for i in range(len(shown))]
+    rows = [buttons[i:i + per] for i in range(0, len(buttons), per)]
+    none_key = "b_ft_nosep" if kind == "line" else "b_ft_nopre"
+    rows.append([btn(t(lang, none_key), f"x:sa:{cid}:{k}:n")])
+    rows.append([btn(t(lang, "b_back"), f"x:sy:{cid}")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def gap_view(cid, lang):
+    ch = chats[cid]
+    text = t(lang, "gap_title", n=ch["footer_gap"], preview=full_preview(ch, lang))
+    row = [btn(("✅ " if g == ch["footer_gap"] else "") + str(g), f"x:gp:{cid}:{g}") for g in GAPS]
+    kb = InlineKeyboardMarkup(inline_keyboard=[row, [btn(t(lang, "b_back"), f"x:fo:{cid}")]])
+    return text, kb
+
+
+def font_view(cid, lang):
+    ch = chats[cid]
+    text = t(lang, "font_title", preview=full_preview(ch, lang))
+    rows = []
+    for key in FONT_NAMES:
+        label = t(lang, "fn_normal") if key == "normal" else fancy("Lunex 123", key)
+        rows.append([btn(("✅ " if key == ch["footer_font"] else "") + label, f"x:fv:{cid}:{key}")])
+    rows.append([btn(t(lang, "b_back"), f"x:fo:{cid}")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 async def add_footer(m, ch):
@@ -2512,7 +2876,8 @@ async def add_footer(m, ch):
     if link in body:
         return
     foot = footer_html(ch)
-    extra = 4 + len(ch["footer_sep"]) + len(ch["footer_pre"]) + len(ch["footer_text"])
+    gap = ch["footer_gap"]
+    extra = 4 + gap * 2 + len(ch["footer_sep"]) + len(ch["footer_pre"]) + len(ch["footer_suf"]) + len(ch["footer_text"])
     try:
         if m.text is not None:
             if len(plain) + extra > 4096:
@@ -2520,7 +2885,7 @@ async def add_footer(m, ch):
             has_link = any(e.type in ("url", "text_link") for e in (m.entities or []))
             lpo = m.link_preview_options if has_link else LinkPreviewOptions(is_disabled=True)
             await bot.edit_message_text(
-                f"{body}\n\n{foot}",
+                f"{body}{spacer(gap)}{foot}",
                 chat_id=m.chat.id,
                 message_id=m.message_id,
                 reply_markup=m.reply_markup,
@@ -2532,7 +2897,7 @@ async def add_footer(m, ch):
             await bot.edit_message_caption(
                 chat_id=m.chat.id,
                 message_id=m.message_id,
-                caption=f"{body}\n\n{foot}" if body else foot,
+                caption=f"{body}{spacer(gap)}{foot}" if body else foot,
                 reply_markup=m.reply_markup,
             )
     except TelegramAPIError as e:
