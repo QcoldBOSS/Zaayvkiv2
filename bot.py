@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import html
 import io
+import json
 import logging
 import os
 import random
@@ -82,6 +83,7 @@ DEFAULT_CH = {
     "footer_suf": "",
     "footer_gap": 1,
     "footer_font": "normal",
+    "footer_links": "[]",
 }
 
 # ---------- стан у пам'яті ----------
@@ -603,6 +605,39 @@ S.update({
     "bn_text": ("Текст ссылки", "Link text", "Текст посилання"),
 })
 
+S.update({
+    "b_ft_links": ("➕ Доп. ссылки ({n})", "➕ Extra links ({n})", "➕ Дод. посилання ({n})"),
+    "b_ml_add": ("➕ Добавить ссылку", "➕ Add link", "➕ Додати посилання"),
+    "ml_title": (
+        "🔗 <b>Дополнительные ссылки</b>\n──────────────\n"
+        "Они выводятся под постом столбиком, в том порядке, как в списке. Основная ссылка вашего канала всегда идёт последней, её текст меняется кнопкой «✏️ Текст».\n\n"
+        "{list}\n\n<b>Вид:</b>\n{preview}",
+        "🔗 <b>Extra links</b>\n──────────────\n"
+        "They are shown under the post as a column, in the order of the list. The main link of your channel always goes last, its text is changed with the “✏️ Text” button.\n\n"
+        "{list}\n\n<b>Look:</b>\n{preview}",
+        "🔗 <b>Додаткові посилання</b>\n──────────────\n"
+        "Вони виводяться під дописом стовпчиком, у тому порядку, як у списку. Основне посилання вашого каналу завжди йде останнім, його текст змінюється кнопкою «✏️ Текст».\n\n"
+        "{list}\n\n<b>Вигляд:</b>\n{preview}",
+    ),
+    "ml_empty": ("Пока нет дополнительных ссылок.", "No extra links yet.", "Поки немає додаткових посилань."),
+    "ml_name_prompt": (
+        "✏️ Отправьте следующим сообщением текст ссылки (до 60 символов), например: Навигация",
+        "✏️ Send the link text in your next message (up to 60 characters), e.g. Navigation",
+        "✏️ Надішліть наступним повідомленням текст посилання (до 60 символів), наприклад: Навігація",
+    ),
+    "ml_url_prompt": (
+        "🔗 Теперь отправьте адрес для «{name}» (начинается с https://)",
+        "🔗 Now send the address for “{name}” (starting with https://)",
+        "🔗 Тепер надішліть адресу для «{name}» (починається з https://)",
+    ),
+    "ml_saved": ("✅ Ссылка добавлена.", "✅ Link added.", "✅ Посилання додано."),
+    "ml_max": (
+        "Можно добавить не больше {n} дополнительных ссылок.",
+        "You can add at most {n} extra links.",
+        "Можна додати не більше {n} додаткових посилань.",
+    ),
+})
+
 
 def t(lang, key, **kw):
     v = S[key]
@@ -741,6 +776,7 @@ async def init_db():
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_suf text NOT NULL DEFAULT '';
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_gap integer NOT NULL DEFAULT 1;
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_font text NOT NULL DEFAULT 'normal';
+        ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_links text NOT NULL DEFAULT '[]';
         """
     )
     for r in await db.fetch("SELECT * FROM chats"):
@@ -2292,7 +2328,7 @@ async def on_welcome_text(m: Message):
             await m.answer(t(lang, "ft_long", n=FT_LIMITS[kind]))
             return
         link = None
-        if kind == "l":
+        if kind in ("l", "u"):
             link = norm_link(text)
             if not link:
                 await m.answer(t(lang, "ft_link_bad"))
@@ -2303,6 +2339,22 @@ async def on_welcome_text(m: Message):
     awaiting.pop(uid, None)
     if cid not in chats or not await is_admin(cid, uid):
         await m.answer(t(lang, "no_access"))
+        return
+    if footer_mode and kind == "n":
+        awaiting[uid] = ("u", cid, text)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:ml:{cid}")]])
+        await m.answer(t(lang, "ml_url_prompt", name=esc(text)), reply_markup=kb)
+        return
+    if footer_mode and kind == "u":
+        links = get_links(chats[cid])
+        if len(links) >= MAX_LINKS:
+            await m.answer(t(lang, "ml_max", n=MAX_LINKS))
+            return
+        links.append((v[2], link))
+        await save_links(cid, links)
+        await m.answer(t(lang, "ml_saved"))
+        ltext, lkb = links_view(cid, lang)
+        await send_chan(m.chat.id, cid, "link", lang, ltext, lkb)
         return
     if footer_mode:
         if kind == "f":
@@ -2400,7 +2452,7 @@ async def on_action(cb: CallbackQuery):
         return
     ch = chats[cid]
     sel[uid] = cid
-    if act not in ("wl", "fl", "fs", "fk"):
+    if act not in ("wl", "fl", "fs", "fk", "an"):
         awaiting.pop(uid, None)
     screen, period = "main", "d"
 
@@ -2461,6 +2513,28 @@ async def on_action(cb: CallbackQuery):
         cur = esc(ch.get("footer_text") or t(lang, "ft_default"))
         kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:fo:{cid}")]])
         await show_chan(cb, cid, "text", t(lang, "ft_prompt", cur=cur), kb)
+        await cb.answer()
+        return
+    elif act in ("ml", "mu", "md"):
+        links = get_links(ch)
+        idx = int(arg) if arg and arg.isdigit() else -1
+        if act == "mu" and 0 < idx < len(links):
+            links[idx - 1], links[idx] = links[idx], links[idx - 1]
+            await save_links(cid, links)
+        elif act == "md" and 0 <= idx < len(links):
+            links.pop(idx)
+            await save_links(cid, links)
+        text, kb = links_view(cid, lang)
+        await show_chan(cb, cid, "link", text, kb)
+        await cb.answer()
+        return
+    elif act == "an":
+        if len(get_links(ch)) >= MAX_LINKS:
+            await cb.answer(t(lang, "ml_max", n=MAX_LINKS), show_alert=True)
+            return
+        awaiting[uid] = ("n", cid)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_cancel"), f"x:ml:{cid}")]])
+        await show_chan(cb, cid, "text", t(lang, "ml_name_prompt"), kb)
         await cb.answer()
         return
     elif act == "fy":
@@ -2647,7 +2721,8 @@ SYMS = [
     ("bullets", "pre", ["•", "▪", "▫", "●", "○", "◉", "◦", "‣", "▹", "➢", "✔", "✅", "☑", "❯", "❱", "⁍"]),
 ]
 
-FT_LIMITS = {"f": 60, "s": 40, "l": 200}
+FT_LIMITS = {"f": 60, "s": 40, "l": 200, "n": 60, "u": 200}
+MAX_LINKS = 5
 GAPS = (0, 1, 2, 3, 4)
 FONT_NAMES = ("normal", "wide", "bold", "mono", "double", "circle", "caps")
 albums = {}
@@ -2706,22 +2781,44 @@ def spacer(gap):
     return "\n" + "\u2800\n" * gap
 
 
-def render_footer(sep, pre, text, link, suf="", font="normal"):
-    a = f'<a href="{esc(link)}">{esc(pre)}{esc(fancy(text, font))}{esc(suf)}</a>'
-    return f"{esc(sep)}\n{a}" if sep else a
+def get_links(ch):
+    """Додаткові посилання каналу: список (текст, адреса)."""
+    try:
+        data = json.loads(ch.get("footer_links") or "[]")
+    except ValueError:
+        return []
+    out = []
+    for x in data if isinstance(data, list) else []:
+        if isinstance(x, dict) and x.get("t") and x.get("u"):
+            out.append((str(x["t"]), str(x["u"])))
+    return out
+
+
+async def save_links(cid, links):
+    await upd(cid, footer_links=json.dumps([{"t": a, "u": b} for a, b in links], ensure_ascii=False))
+
+
+def render_footer(sep, pre, text, link, suf="", font="normal", extra=()):
+    items = list(extra) + [(text, link)]
+    body = "\n".join(
+        f'<a href="{esc(h)}">{esc(pre)}{esc(fancy(x, font))}{esc(suf)}</a>' for x, h in items
+    )
+    return f"{esc(sep)}\n{body}" if sep else body
 
 
 def footer_html(ch):
     return render_footer(
         ch["footer_sep"], ch["footer_pre"], ch["footer_text"], ch["footer_link"],
-        ch["footer_suf"], ch["footer_font"],
+        ch["footer_suf"], ch["footer_font"], get_links(ch),
     )
 
 
 def full_preview(ch, lang):
     label = ch.get("footer_text") or t(lang, "ft_default")
     href = ch.get("footer_link") or "https://t.me/"
-    foot = render_footer(ch["footer_sep"], ch["footer_pre"], label, href, ch["footer_suf"], ch["footer_font"])
+    foot = render_footer(
+        ch["footer_sep"], ch["footer_pre"], label, href, ch["footer_suf"], ch["footer_font"], get_links(ch),
+    )
     return f"{esc(t(lang, 'gap_sample'))}{spacer(ch['footer_gap'])}{foot}"
 
 
@@ -2793,9 +2890,32 @@ async def footer_view(cid, lang):
         [btn(t(lang, "b_ft_styles"), f"x:fy:{cid}"), btn(t(lang, "b_ft_sym"), f"x:sy:{cid}")],
         [btn(t(lang, "b_ft_gap", v=ch["footer_gap"]), f"x:gs:{cid}"), btn(t(lang, "b_ft_font"), f"x:fz:{cid}")],
         [btn(t(lang, "b_ft_link"), f"x:fk:{cid}"), btn(t(lang, "b_ft_auto"), f"x:fa:{cid}")],
+        [btn(t(lang, "b_ft_links", n=len(get_links(ch))), f"x:ml:{cid}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
     return text, kb
+
+
+def links_view(cid, lang):
+    ch = chats[cid]
+    links = get_links(ch)
+    if links:
+        lst = "\n".join(f'<b>{i}.</b> <a href="{esc(u)}">{esc(x)}</a>' for i, (x, u) in enumerate(links, 1))
+    else:
+        lst = t(lang, "ml_empty")
+    text = t(lang, "ml_title", list=lst, preview=full_preview(ch, lang))
+    rows = []
+    for i, (x, _) in enumerate(links):
+        short = x if len(x) <= 18 else x[:17] + "…"
+        row = []
+        if i > 0:
+            row.append(btn("⬆️", f"x:mu:{cid}:{i}"))
+        row.append(btn(f"🗑 {short}", f"x:md:{cid}:{i}"))
+        rows.append(row)
+    if len(links) < MAX_LINKS:
+        rows.append([btn(t(lang, "b_ml_add"), f"x:an:{cid}")])
+    rows.append([btn(t(lang, "b_back"), f"x:fo:{cid}")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def styles_view(cid, lang):
@@ -2877,7 +2997,8 @@ async def add_footer(m, ch):
         return
     foot = footer_html(ch)
     gap = ch["footer_gap"]
-    extra = 4 + gap * 2 + len(ch["footer_sep"]) + len(ch["footer_pre"]) + len(ch["footer_suf"]) + len(ch["footer_text"])
+    visible = html.unescape(re.sub(r"<[^>]+>", "", foot))
+    extra = 4 + gap * 2 + len(visible.encode("utf-16-le")) // 2
     try:
         if m.text is not None:
             if len(plain) + extra > 4096:
