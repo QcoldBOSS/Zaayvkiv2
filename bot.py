@@ -1,5 +1,6 @@
 import asyncio
 import hashlib
+import hmac
 import html
 import io
 import json
@@ -7,6 +8,7 @@ import logging
 import os
 import random
 import re
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -47,6 +49,7 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 OWNER_ID = int(os.getenv("ADMIN_ID", "1321815165"))
 PORT = int(os.getenv("PORT", "10000"))
 SECRET = hashlib.sha256(TOKEN.encode()).hexdigest()[:32]
+CAPTCHA_KEY = hashlib.sha256(b"captcha:" + TOKEN.encode()).digest()
 
 FLUSH_EVERY = 1200  # секунд між записами статистики в базу
 FLUSH_MAX = 100     # або коли назбиралось стільки записів
@@ -60,6 +63,7 @@ dp = Dispatcher()
 LANGS = ("ru", "en", "uk")
 LI = {"ru": 0, "en": 1, "uk": 2}
 TYPES = ("math", "fruit", "animal", "color", "count")
+OPTIONS = 4  # кнопок у кожній капчі
 CYCLES = {"timeout": [0, 3, 5, 10, 30], "cooldown": [0, 5, 30, 60, 1440], "max_tries": [1, 2, 3, 5]}
 CYC = {"to": "timeout", "cd": "cooldown", "tr": "max_tries"}
 DEFAULT_CH = {
@@ -1112,7 +1116,7 @@ def build_captcha(kind, lang):
             a, b = random.randint(2, 6), random.randint(2, 6)
             ans = a * b
         options = {ans}
-        while len(options) < 4:
+        while len(options) < OPTIONS:
             w = ans + random.randint(-5, 5)
             if w >= 0:
                 options.add(w)
@@ -1121,7 +1125,7 @@ def build_captcha(kind, lang):
         return t(lang, "q_math", a=a, op=op, b=b), [(str(o), o == ans) for o in options]
 
     if kind in POOLS:
-        items = random.sample(list(POOLS[kind].items()), 4)
+        items = random.sample(list(POOLS[kind].items()), OPTIONS)
         emoji, names = random.choice(items)
         key = "q_color" if kind == "color" else "q_pick"
         return t(lang, key, n=names[li]), [(e, e == emoji) for e, _ in items]
@@ -1129,7 +1133,7 @@ def build_captcha(kind, lang):
     emoji = random.choice(list(POOLS["fruit"]))
     n = random.randint(2, 7)
     options = {n}
-    while len(options) < 4:
+    while len(options) < OPTIONS:
         w = n + random.randint(-3, 3)
         if 1 <= w <= 10:
             options.add(w)
@@ -1138,11 +1142,31 @@ def build_captcha(kind, lang):
     return t(lang, "q_count", items=" ".join([emoji] * n)), [(str(o), o == n) for o in options]
 
 
+def answer_slot(cid, uid, nonce):
+    """Номер кнопки з правильною відповіддю. Без CAPTCHA_KEY його не вирахувати."""
+    mac = hmac.new(CAPTCHA_KEY, f"{cid}:{uid}:{nonce}".encode(), hashlib.sha256).digest()
+    return mac[0] % OPTIONS
+
+
 def captcha_markup(cid, uid, options, prefix="c"):
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text=label, callback_data=f"{prefix}:{cid}:{uid}:{int(ok)}")
-        for label, ok in options
+    """Кнопки капчі та її nonce. У callback_data лише nonce і номер кнопки — відповіді там немає."""
+    nonce = secrets.token_hex(4)
+    options = list(options)
+    slot = answer_slot(cid, uid, nonce)
+    right = next(i for i, (_, ok) in enumerate(options) if ok)
+    options[slot], options[right] = options[right], options[slot]
+    markup = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=label, callback_data=f"{prefix}:{cid}:{uid}:{nonce}:{i}")
+        for i, (label, _) in enumerate(options)
     ]])
+    return markup, nonce
+
+
+def picked_right(parts, cid, uid):
+    """Чи правильну кнопку натиснуто. None — кнопка старого формату, її відповідь перевірити неможливо."""
+    if len(parts) != 5 or not parts[4].isdigit():
+        return None
+    return int(parts[4]) == answer_slot(cid, uid, parts[3])
 
 
 def hint_line(lang, ch):
@@ -1160,7 +1184,8 @@ def captcha_message(ch, lang, cid, uid, head=None, prefix="c"):
         head = esc(ch["welcome"]) if ch["welcome"] else t(lang, "welcome_def")
     hint = hint_line(lang, eff(ch))
     text = f"{head}\n\n{q}" + (f"\n\n{hint}" if hint else "")
-    return text, captcha_markup(cid, uid, opts, prefix)
+    markup, nonce = captcha_markup(cid, uid, opts, prefix)
+    return text, markup, nonce
 
 
 # ---------- заявки на вступ ----------
@@ -1196,9 +1221,10 @@ async def on_join_request(req: ChatJoinRequest):
         return
 
     lang = get_lang(user)
+    nonce = None
     try:
         if lang:
-            text, markup = captcha_message(ch, lang, cid, uid)
+            text, markup, nonce = captcha_message(ch, lang, cid, uid)
             pic = "captcha"
         else:
             text, markup = S["pick_lang"], picker_markup(f"cl:{cid}:{uid}")
@@ -1214,6 +1240,7 @@ async def on_join_request(req: ChatJoinRequest):
         "name": user.full_name,
         "username": user.username,
         "lang": lang,
+        "nonce": nonce,
     }
 
 
@@ -1227,9 +1254,11 @@ async def on_applicant_lang(cb: CallbackQuery):
         return
     ulang[uid] = lang
     key = (cid, uid)
+    text, markup, nonce = captcha_message(ch, lang, cid, uid)
     p = pending.get(key)
     if p:
         p["lang"] = lang
+        p["nonce"] = nonce
     else:
         pending[key] = {
             "ucid": cb.message.chat.id,
@@ -1238,8 +1267,8 @@ async def on_applicant_lang(cb: CallbackQuery):
             "name": cb.from_user.full_name,
             "username": cb.from_user.username,
             "lang": lang,
+            "nonce": nonce,
         }
-    text, markup = captcha_message(ch, lang, cid, uid)
     await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
     await cb.answer()
 
@@ -1247,8 +1276,8 @@ async def on_applicant_lang(cb: CallbackQuery):
 @dp.callback_query(F.data.startswith("t:"))
 async def on_test_answer(cb: CallbackQuery):
     """Тест капчі: усе так само, як бачить заявник (картинки, спроби, пауза), але нічого не змінюється."""
-    _, cid, uid, ok = cb.data.split(":")
-    cid, uid = int(cid), int(uid)
+    parts = cb.data.split(":")
+    cid, uid = int(parts[1]), int(parts[2])
     if cb.from_user.id != uid or cid not in chats:
         await cb.answer()
         return
@@ -1257,13 +1286,18 @@ async def on_test_answer(cb: CallbackQuery):
     ch = eff(raw)
     chat_id, mid = cb.message.chat.id, cb.message.message_id
     key = (cid, uid)
-    correct = ok == "1"
+    correct = picked_right(parts, cid, uid)
+    if correct is None:  # кнопка старого формату — показуємо нове завдання
+        text, markup, _ = captcha_message(raw, lang, cid, uid, prefix="t")
+        await edit_card(chat_id, mid, "captcha", text, markup)
+        await cb.answer()
+        return
     if not correct:
         fails = test_fails.get(key, 0) + 1
         left = ch["max_tries"] - fails
         if left > 0:
             test_fails[key] = fails
-            text, markup = captcha_message(raw, lang, cid, uid, head=t(lang, "retry", k=left), prefix="t")
+            text, markup, _ = captcha_message(raw, lang, cid, uid, head=t(lang, "retry", k=left), prefix="t")
             await edit_card(chat_id, mid, "captcha", text, markup)
             await cb.answer()
             return
@@ -1282,25 +1316,23 @@ async def on_test_answer(cb: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("c:"))
 async def on_answer(cb: CallbackQuery):
-    _, cid, uid, ok = cb.data.split(":")
-    cid, uid = int(cid), int(uid)
+    parts = cb.data.split(":")
+    cid, uid = int(parts[1]), int(parts[2])
     if cb.from_user.id != uid:
         await cb.answer()
         return
-    correct = ok == "1"
-
-    if cid == 0:  # тестова капча адміна
-        lang = lang_of(cb.from_user)
-        try:
-            await cb.message.edit_text(t(lang, "test_ok" if correct else "test_bad"))
-        except Exception:
-            pass
-        await cb.answer()
-        return
+    correct = picked_right(parts, cid, uid)
 
     key = (cid, uid)
     ch = eff(chats[cid]) if cid in chats else None
     info = pending.get(key)
+    # Приймаємо лише кнопки поточного завдання: повторне чи підроблене натискання не має рахуватись.
+    if info and info.get("nonce") and correct is not None and parts[3] != info["nonce"]:
+        await cb.answer()
+        return
+    if correct is None and ch is None:
+        await cb.answer()
+        return
     if info is None:
         info = {
             "ucid": cb.message.chat.id,
@@ -1313,12 +1345,19 @@ async def on_answer(cb: CallbackQuery):
         }
     lang = info.get("lang") or lang_of(cb.from_user)
 
+    if correct is None:  # кнопка старого формату — показуємо нове завдання, спроба не рахується
+        text, markup, info["nonce"] = captcha_message(ch, lang, cid, uid)
+        pending[key] = info
+        await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
+        await cb.answer()
+        return
+
     if not correct and ch:
         info["fails"] = info.get("fails", 0) + 1
         left = ch["max_tries"] - info["fails"]
         if left > 0:
             pending[key] = info
-            text, markup = captcha_message(ch, lang, cid, uid, head=t(lang, "retry", k=left))
+            text, markup, info["nonce"] = captcha_message(ch, lang, cid, uid, head=t(lang, "retry", k=left))
             await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
             await cb.answer()
             return
@@ -2458,7 +2497,7 @@ async def on_action(cb: CallbackQuery):
 
     if act == "en":
         await upd(cid, enabled=not ch["enabled"])
-    elif act == "md":
+    elif act == "md" and arg is None:  # з аргументом — стара кнопка видалення посилання, режим не чіпаємо
         await upd(cid, mode="auto" if ch["mode"] == "captcha" else "captcha")
         screen = "set"
     elif act in CYC:
@@ -2515,13 +2554,13 @@ async def on_action(cb: CallbackQuery):
         await show_chan(cb, cid, "text", t(lang, "ft_prompt", cur=cur), kb)
         await cb.answer()
         return
-    elif act in ("ml", "mu", "md"):
+    elif act in ("ml", "mu", "mx"):
         links = get_links(ch)
         idx = int(arg) if arg and arg.isdigit() else -1
         if act == "mu" and 0 < idx < len(links):
             links[idx - 1], links[idx] = links[idx], links[idx - 1]
             await save_links(cid, links)
-        elif act == "md" and 0 <= idx < len(links):
+        elif act == "mx" and 0 <= idx < len(links):
             links.pop(idx)
             await save_links(cid, links)
         text, kb = links_view(cid, lang)
@@ -2635,7 +2674,7 @@ async def on_action(cb: CallbackQuery):
         screen = "bl"
     elif act == "ts":
         test_fails.pop((cid, uid), None)
-        text, markup = captcha_message(ch, lang, cid, uid, prefix="t")
+        text, markup, _ = captcha_message(ch, lang, cid, uid, prefix="t")
         await bot.send_photo(uid, img("captcha"), caption=text, reply_markup=markup)
         await cb.answer(t(lang, "test_sent"))
         return
@@ -2910,7 +2949,7 @@ def links_view(cid, lang):
         row = []
         if i > 0:
             row.append(btn("⬆️", f"x:mu:{cid}:{i}"))
-        row.append(btn(f"🗑 {short}", f"x:md:{cid}:{i}"))
+        row.append(btn(f"🗑 {short}", f"x:mx:{cid}:{i}"))
         rows.append(row)
     if len(links) < MAX_LINKS:
         rows.append([btn(t(lang, "b_ml_add"), f"x:an:{cid}")])
