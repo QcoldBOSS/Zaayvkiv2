@@ -53,9 +53,10 @@ CAPTCHA_KEY = hashlib.sha256(b"captcha:" + TOKEN.encode()).digest()
 
 FLUSH_EVERY = 1200  # секунд між записами статистики в базу
 FLUSH_MAX = 100     # або коли назбиралось стільки записів
-RAID_N = int(os.getenv("RAID_N", "25"))   # стільки заявок за хвилину = рейд
+RAID_N = int(os.getenv("RAID_N", "25"))   # стільки заявок за хвилину = рейд (типовий поріг каналу)
 RAID_WINDOW = 60
-RAID_MINUTES = 15
+RAID_MINUTES = 15   # суворий режим діє ще стільки хвилин після останньої хвилі заявок
+RAID_SNOOZE = 60    # на стільки хвилин кнопка «Це не рейд» присипляє антирейд
 
 bot = Bot(TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
@@ -64,8 +65,11 @@ LANGS = ("ru", "en", "uk")
 LI = {"ru": 0, "en": 1, "uk": 2}
 TYPES = ("math", "fruit", "animal", "color", "count")
 OPTIONS = 4  # кнопок у кожній капчі
-CYCLES = {"timeout": [0, 3, 5, 10, 30], "cooldown": [0, 5, 30, 60, 1440], "max_tries": [1, 2, 3, 5]}
-CYC = {"to": "timeout", "cd": "cooldown", "tr": "max_tries"}
+CYCLES = {
+    "timeout": [0, 3, 5, 10, 30], "cooldown": [0, 5, 30, 60, 1440], "max_tries": [1, 2, 3, 5],
+    "raid_n": [10, 25, 50, 100],
+}
+CYC = {"to": "timeout", "cd": "cooldown", "tr": "max_tries", "rn": "raid_n"}
 DEFAULT_CH = {
     "enabled": True,
     "mode": "captcha",
@@ -77,6 +81,7 @@ DEFAULT_CH = {
     "notify_mode": "owner",
     "max_tries": 1,
     "raid_guard": True,
+    "raid_n": RAID_N,
     "weekly": False,
     "last_report": None,
     "footer": False,
@@ -107,7 +112,8 @@ test_fails = {}   # (chat_id, user_id) -> помилки в тесті капч�
 stat_buf = []
 background = []
 flush_lock = asyncio.Lock()
-raid = {}         # chat_id -> {times, until}
+raid = {}         # chat_id -> стан антирейду (див. raid_state)
+file_ids = {}     # назва ілюстрації -> file_id у Telegram, щоб не завантажувати файл щоразу
 
 # ---------- тексти: (ru, en, uk) ----------
 S = {
@@ -332,15 +338,32 @@ S.update({
         "⚙️ <b>Налаштування</b>\n📣 {title}\n\n🎯 <b>Режим</b> — капча або приймання без перевірки\n⏱ <b>Час</b> — після нього заявку відхиляють\n🔁 <b>Спроби</b> — скільки разів можна помилитись (більше спроб — слабший захист)\n🧊 <b>Пауза</b> — як довго не можна подати заявку знову\n🚨 <b>Антирейд</b> — при напливі заявок вмикає суворий режим\n📬 <b>Звіт</b> — щопонеділка картинка зі статистикою\n🔔 <b>Сповіщення</b> — хто отримує повідомлення\n\nНатисніть на пункт, щоб перемкнути значення.",
     ),
     "raid_alert": (
-        "🚨 <b>Антирейд</b> · {title}\nЗа минуту пришло заявок: <b>{n}</b>. На {m} мин включён строгий режим: одна попытка, до 2 мин на ответ, пауза 30 мин после ошибки.\n\nОтключить защиту можно в настройках канала.",
-        "🚨 <b>Anti-raid</b> · {title}\nRequests in the last minute: <b>{n}</b>. A strict mode is on for {m} min: one attempt, up to 2 min to answer, 30 min pause after a mistake.\n\nYou can turn this protection off in the channel settings.",
-        "🚨 <b>Антирейд</b> · {title}\nЗа хвилину надійшло заявок: <b>{n}</b>. На {m} хв увімкнено суворий режим: одна спроба, до 2 хв на відповідь, пауза 30 хв після помилки.\n\nВимкнути захист можна в налаштуваннях каналу.",
+        "🚨 <b>Антирейд</b> · {title}\nЗа минуту пришло заявок: <b>{n}</b>. Включён строгий режим: два задания подряд, одна попытка, до 2 мин на ответ, пауза 30 мин после ошибки.\n\nОн действует, пока наплыв не прекратится, и ещё {m} мин после. Сообщения об отказах на это время отключены — в конце придёт итог.\n\nЕсли это не рейд (например, вышла реклама), нажмите кнопку ниже.",
+        "🚨 <b>Anti-raid</b> · {title}\nRequests in the last minute: <b>{n}</b>. Strict mode is on: two tasks in a row, one attempt, up to 2 min to answer, 30 min pause after a mistake.\n\nIt stays on while the flood continues and for {m} more min after it. Messages about declines are muted meanwhile — you will get a summary at the end.\n\nIf this is not a raid (for example, an ad just went live), tap the button below.",
+        "🚨 <b>Антирейд</b> · {title}\nЗа хвилину надійшло заявок: <b>{n}</b>. Увімкнено суворий режим: два завдання поспіль, одна спроба, до 2 хв на відповідь, пауза 30 хв після помилки.\n\nВін діє, доки наплив не припиниться, і ще {m} хв після. Повідомлення про відмови на цей час вимкнено — наприкінці прийде підсумок.\n\nЯкщо це не рейд (наприклад, вийшла реклама), натисніть кнопку нижче.",
     ),
     "raid_on": (
-        "\n\n🚨 Активен режим антирейда ещё {m} мин.",
-        "\n\n🚨 Anti-raid mode is active for {m} more min.",
-        "\n\n🚨 Активний режим антирейду ще {m} хв.",
+        "\n\n🚨 Идёт рейд: включён строгий режим.",
+        "\n\n🚨 A raid is in progress: strict mode is on.",
+        "\n\n🚨 Триває рейд: увімкнено суворий режим.",
     ),
+    "raid_end": (
+        "✅ <b>Рейд закончился</b> · {title}\nСтрогий режим работал {m} мин и теперь выключен.\n\nЗаявок за это время: <b>{n}</b>\n✅ принято: {ok} · ❌ отклонено: {dec}\n⌛ без ответа: {to} · 🚫 заблокировано: {bl}",
+        "✅ <b>The raid is over</b> · {title}\nStrict mode was on for {m} min and is now off.\n\nRequests during that time: <b>{n}</b>\n✅ accepted: {ok} · ❌ declined: {dec}\n⌛ no answer: {to} · 🚫 blocked: {bl}",
+        "✅ <b>Рейд закінчився</b> · {title}\nСуворий режим працював {m} хв і тепер вимкнений.\n\nЗаявок за цей час: <b>{n}</b>\n✅ прийнято: {ok} · ❌ відхилено: {dec}\n⌛ без відповіді: {to} · 🚫 заблоковано: {bl}",
+    ),
+    "raid_second": (
+        "✅ Верно! Сейчас идёт усиленная проверка — решите ещё одно задание.",
+        "✅ Correct! Extra checks are on right now — please solve one more task.",
+        "✅ Правильно! Зараз діє посилена перевірка — розв'яжіть ще одне завдання.",
+    ),
+    "raid_stopped": (
+        "Строгий режим выключен. Антирейд снова начнёт следить через {m} мин.",
+        "Strict mode is off. Anti-raid will start watching again in {m} min.",
+        "Суворий режим вимкнено. Антирейд знову почне стежити через {m} хв.",
+    ),
+    "b_raid_stop": ("✅ Это не рейд", "✅ Not a raid", "✅ Це не рейд"),
+    "b_raid_n": ("📈 Порог: {v}/мин", "📈 Threshold: {v}/min", "📈 Поріг: {v}/хв"),
     "weekly_head": ("📬 <b>Недельный отчёт</b>", "📬 <b>Weekly report</b>", "📬 <b>Тижневий звіт</b>"),
 })
 
@@ -364,7 +387,8 @@ S.update({
         "⏱ <b>Время</b> — сколько есть на ответ, потом заявка отклоняется\n"
         "🔁 <b>Попытки</b> — сколько раз можно ошибиться\n"
         "🧊 <b>Пауза</b> — как долго нельзя подать новую заявку после отказа\n"
-        "🚨 <b>Антирейд</b> — если ботов вдруг приходит очень много, проверка на {m} мин становится строже\n"
+        "🚨 <b>Антирейд</b> — если ботов вдруг приходит очень много, проверка становится строже, пока наплыв не закончится\n"
+        "📈 <b>Порог</b> — сколько заявок в минуту считать рейдом\n"
         "📬 <b>Отчёт</b> — по понедельникам картинка со статистикой\n"
         "🔔 <b>Уведомления</b> — кто получает сообщения о заявках\n\n"
         "На кнопках — текущие значения. Нажмите, чтобы изменить. Кнопка «❓ Подробнее» объяснит всё с примерами.",
@@ -373,7 +397,8 @@ S.update({
         "⏱ <b>Time</b> — how long a person has to answer, then the request is declined\n"
         "🔁 <b>Attempts</b> — how many mistakes are allowed\n"
         "🧊 <b>Pause</b> — how long a person cannot apply again after a decline\n"
-        "🚨 <b>Anti-raid</b> — if a flood of bots suddenly arrives, the check gets stricter for {m} min\n"
+        "🚨 <b>Anti-raid</b> — if a flood of bots suddenly arrives, the check gets stricter until the flood is over\n"
+        "📈 <b>Threshold</b> — how many requests per minute count as a raid\n"
         "📬 <b>Report</b> — a statistics picture every Monday\n"
         "🔔 <b>Notifications</b> — who receives messages about requests\n\n"
         "The buttons show current values. Tap one to change it. The “❓ Explain” button describes everything with examples.",
@@ -382,7 +407,8 @@ S.update({
         "⏱ <b>Час</b> — скільки є часу на відповідь, потім заявку відхиляють\n"
         "🔁 <b>Спроби</b> — скільки разів можна помилитись\n"
         "🧊 <b>Пауза</b> — як довго не можна подати нову заявку після відмови\n"
-        "🚨 <b>Антирейд</b> — якщо ботів раптом приходить дуже багато, перевірка на {m} хв стає суворішою\n"
+        "🚨 <b>Антирейд</b> — якщо ботів раптом приходить дуже багато, перевірка стає суворішою, доки наплив не закінчиться\n"
+        "📈 <b>Поріг</b> — скільки заявок за хвилину вважати рейдом\n"
         "📬 <b>Звіт</b> — щопонеділка картинка зі статистикою\n"
         "🔔 <b>Сповіщення</b> — хто отримує повідомлення про заявки\n\n"
         "На кнопках — поточні значення. Натисніть, щоб змінити. Кнопка «❓ Докладно» поясне все на прикладах.",
@@ -399,7 +425,9 @@ S.update({
         "🧊 <b>Пауза после отказа</b>\n"
         "После отказа (ошибка или время вышло) человек не может сразу подать новую заявку: пока идёт пауза, бот отклоняет её без капчи. Это мешает ботам перебирать ответы снова и снова. «выкл» — пробовать можно сразу.\n\n"
         "🚨 <b>Антирейд</b>\n"
-        "Рейд — это когда боты массово шлют заявки одновременно. Если за 1 минуту приходит {n} заявок или больше (в режиме капчи), бот на {m} минут включает строгий режим: только 1 попытка, до 2 минут на ответ и пауза 30 минут после ошибки. Вам сразу придёт сообщение. Когда время пройдёт, бот вернётся к вашим настройкам. Рекомендуем оставить включённым.\n\n"
+        "Рейд — это когда боты массово шлют заявки одновременно. Если за 1 минуту приходит {n} заявок или больше (в режиме капчи), бот включает строгий режим: два задания подряд, только 1 попытка, до 2 минут на ответ и пауза 30 минут после ошибки. Вам сразу придёт сообщение. Строгий режим действует, пока наплыв продолжается, и ещё {m} минут после него. Затем бот вернётся к вашим настройкам и пришлёт итог: сколько заявок пришло и чем они закончились. Сообщения об отклонённых заявках во время рейда не приходят, чтобы не засыпать вас уведомлениями. Если это не рейд, а, например, вышла реклама — нажмите «✅ Это не рейд» в сообщении или в панели канала: строгий режим выключится, а антирейд не будет срабатывать {s} минут. Рекомендуем оставить включённым.\n\n"
+        "📈 <b>Порог рейда</b>\n"
+        "Сколько заявок за минуту считать рейдом. Небольшому каналу подойдёт 10, крупному или с рекламой — 50 или 100.\n\n"
         "📬 <b>Недельный отчёт</b>\n"
         "По понедельникам бот присылает картинку: сколько заявок пришло за неделю, сколько принято и отклонено. Получают те, кто выбран в уведомлениях; если они выключены — владелец канала.\n\n"
         "🔔 <b>Уведомления</b>\n"
@@ -415,7 +443,9 @@ S.update({
         "🧊 <b>Pause after a decline</b>\n"
         "After a decline (a mistake or timeout) the person cannot apply again right away: while the pause lasts, the bot declines the new request without a captcha. This stops bots from trying answers again and again. “off” means they can retry immediately.\n\n"
         "🚨 <b>Anti-raid</b>\n"
-        "A raid is when bots send many requests at the same time. If {n} or more requests arrive within 1 minute (in captcha mode), the bot turns on a strict mode for {m} minutes: only 1 attempt, up to 2 minutes to answer and a 30-minute pause after a mistake. You get a message right away. When the time is over, the bot returns to your settings. We recommend keeping it on.\n\n"
+        "A raid is when bots send many requests at the same time. If {n} or more requests arrive within 1 minute (in captcha mode), the bot turns on a strict mode: two tasks in a row, only 1 attempt, up to 2 minutes to answer and a 30-minute pause after a mistake. You get a message right away. Strict mode stays on while the flood continues and for {m} more minutes after it. Then the bot returns to your settings and sends a summary: how many requests arrived and how they ended. Messages about declined requests are not sent during a raid, so you are not buried in notifications. If it is not a raid but, say, an ad that just went live, tap “✅ Not a raid” in the message or in the channel panel: strict mode turns off and anti-raid will not trigger for {s} minutes. We recommend keeping it on.\n\n"
+        "📈 <b>Raid threshold</b>\n"
+        "How many requests per minute count as a raid. 10 suits a small channel; 50 or 100 suits a large one or one that runs ads.\n\n"
         "📬 <b>Weekly report</b>\n"
         "Every Monday the bot sends a picture: how many requests arrived this week, how many were accepted and declined. It goes to those chosen in notifications; if those are off, to the channel owner.\n\n"
         "🔔 <b>Notifications</b>\n"
@@ -431,7 +461,9 @@ S.update({
         "🧊 <b>Пауза після відмови</b>\n"
         "Після відмови (помилка чи вичерпаний час) людина не може одразу подати нову заявку: поки триває пауза, бот відхиляє її без капчі. Це заважає ботам перебирати відповіді знову й знову. «вимк» — пробувати можна одразу.\n\n"
         "🚨 <b>Антирейд</b>\n"
-        "Рейд — це коли боти масово шлють заявки одночасно. Якщо за 1 хвилину надходить {n} заявок або більше (у режимі капчі), бот на {m} хвилин вмикає суворий режим: лише 1 спроба, до 2 хвилин на відповідь і пауза 30 хвилин після помилки. Вам одразу прийде повідомлення. Коли час мине, бот повернеться до ваших налаштувань. Рекомендуємо залишити ввімкненим.\n\n"
+        "Рейд — це коли боти масово шлють заявки одночасно. Якщо за 1 хвилину надходить {n} заявок або більше (у режимі капчі), бот вмикає суворий режим: два завдання поспіль, лише 1 спроба, до 2 хвилин на відповідь і пауза 30 хвилин після помилки. Вам одразу прийде повідомлення. Суворий режим діє, доки наплив триває, і ще {m} хвилин після нього. Потім бот повернеться до ваших налаштувань і надішле підсумок: скільки заявок надійшло і чим вони закінчились. Повідомлення про відхилені заявки під час рейду не надходять, щоб не засипати вас сповіщеннями. Якщо це не рейд, а, наприклад, вийшла реклама — натисніть «✅ Це не рейд» у повідомленні або в панелі каналу: суворий режим вимкнеться, а антирейд не спрацьовуватиме {s} хвилин. Рекомендуємо залишити ввімкненим.\n\n"
+        "📈 <b>Поріг рейду</b>\n"
+        "Скільки заявок за хвилину вважати рейдом. Невеликому каналу підійде 10, великому або з рекламою — 50 чи 100.\n\n"
         "📬 <b>Тижневий звіт</b>\n"
         "Щопонеділка бот надсилає картинку: скільки заявок надійшло за тиждень, скільки прийнято й відхилено. Отримують ті, кого обрано в сповіщеннях; якщо вони вимкнені — власник каналу.\n\n"
         "🔔 <b>Сповіщення</b>\n"
@@ -783,6 +815,7 @@ async def init_db():
         ALTER TABLE chats ADD COLUMN IF NOT EXISTS footer_links text NOT NULL DEFAULT '[]';
         """
     )
+    await db.execute(f"ALTER TABLE chats ADD COLUMN IF NOT EXISTS raid_n integer NOT NULL DEFAULT {RAID_N}")
     for r in await db.fetch("SELECT * FROM chats"):
         chats[r["chat_id"]] = dict(r)
     for r in await db.fetch("SELECT chat_id, user_id FROM chat_admins"):
@@ -888,6 +921,9 @@ async def unblock(cid, uid):
 
 def record(cid, uid, result):
     stat_buf.append((datetime.now(timezone.utc), cid, uid, result))
+    if raid_active(cid):  # для підсумку після рейду
+        stats = raid[cid]["stats"]
+        stats[result] = stats.get(result, 0) + 1
 
 
 async def flush_stats():
@@ -937,18 +973,26 @@ DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 def img(name):
-    return FSInputFile(os.path.join(DIR, f"{name}.jpg"))
+    return file_ids.get(name) or FSInputFile(os.path.join(DIR, f"{name}.jpg"))
+
+
+def keep_img(name, msg):
+    """Запам'ятовує file_id надісланої ілюстрації: далі Telegram бере її в себе, без завантаження."""
+    photo = getattr(msg, "photo", None)
+    if photo:
+        file_ids[name] = photo[-1].file_id
 
 
 async def edit_card(chat_id, mid, key, text, kb=None):
     """Міняє картинку й підпис у повідомленні; для старих текстових повідомлень — запасний варіант."""
     try:
-        await bot.edit_message_media(
+        msg = await bot.edit_message_media(
             chat_id=chat_id,
             message_id=mid,
             media=InputMediaPhoto(media=img(key), caption=text, parse_mode=ParseMode.HTML),
             reply_markup=kb,
         )
+        keep_img(key, msg)
         return True
     except TelegramBadRequest as e:
         if "not modified" in str(e):
@@ -1037,6 +1081,8 @@ async def notify(cid, uid, name, username, result):
     ch = chats.get(cid)
     if not ch or ch.get("notify_mode") == "off":
         return
+    if result in ("declined", "timeout") and raid_active(cid):  # під час рейду відмови йдуть у підсумок
+        return
     if ch.get("notify_mode", "owner") == "owner" and not (ch.get("owner_id") or ch.get("added_by")):
         await sync_admins(cid)
     for to in recipients(ch):
@@ -1056,47 +1102,115 @@ async def notify(cid, uid, name, username, result):
 
 # ---------- антирейд ----------
 
-def raid_hit(cid):
+def raid_state(cid):
+    """Стан антирейду каналу: times — час заявок за останню хвилину; until — доки діє суворий режим;
+    snooze — доки антирейд приспано; started — початок рейду (None, якщо рейду немає);
+    total і stats — заявки та їхні результати за час рейду, для підсумку."""
+    return raid.setdefault(
+        cid, {"times": deque(), "until": 0.0, "snooze": 0.0, "started": None, "total": 0, "stats": {}}
+    )
+
+
+def raid_hit(cid, limit):
     """Фіксує заявку; повертає кількість заявок за хвилину, якщо щойно почався рейд."""
-    r = raid.setdefault(cid, {"times": deque(), "until": 0.0})
+    r = raid_state(cid)
     now = time.monotonic()
     r["times"].append(now)
     while r["times"] and now - r["times"][0] > RAID_WINDOW:
         r["times"].popleft()
-    if len(r["times"]) >= RAID_N and r["until"] <= now:
-        r["until"] = now + RAID_MINUTES * 60
-        return len(r["times"])
-    return 0
+    if r["started"] is not None:
+        r["total"] += 1
+    if len(r["times"]) < limit or r["snooze"] > now:
+        return 0
+    r["until"] = now + RAID_MINUTES * 60  # наплив триває — суворий режим подовжується
+    if r["started"] is not None:
+        return 0
+    r.update(started=now, total=len(r["times"]), stats={})
+    return len(r["times"])
+
+
+def raid_active(cid):
+    r = raid.get(cid)
+    return bool(r and r["until"] > time.monotonic())
+
+
+def raid_stop(cid):
+    """Адмін сказав, що це не рейд: суворий режим вимикається без підсумку, антирейд засинає."""
+    raid_state(cid).update(until=0.0, started=None, snooze=time.monotonic() + RAID_SNOOZE * 60)
 
 
 def eff(ch):
     """Ефективні налаштування: під час рейду діє суворий режим."""
-    r = raid.get(ch["chat_id"])
-    if r and r["until"] > time.monotonic():
+    if raid_active(ch["chat_id"]):
         return {
             **ch,
             "max_tries": 1,
             "timeout": min(ch["timeout"] or 2, 2),
             "cooldown": max(ch["cooldown"], 30),
+            "steps": 2,  # два правильні завдання поспіль: вгадати навмання вчетверо важче
         }
     return ch
+
+
+def raid_targets(ch):
+    targets = set(recipients(ch))
+    if not targets:
+        owner = ch.get("owner_id") or ch.get("added_by")
+        if owner:
+            targets.add(owner)
+    return targets
 
 
 async def raid_alert(cid, n):
     ch = chats.get(cid)
     if not ch:
         return
-    targets = set(recipients(ch))
-    if not targets:
-        owner = ch.get("owner_id") or ch.get("added_by")
-        if owner:
-            targets.add(owner)
-    for to in targets:
+    for to in raid_targets(ch):
         lang = lang_by_id(to)
+        kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_raid_stop"), f"x:rs:{cid}")]])
         try:
-            await bot.send_message(to, t(lang, "raid_alert", title=esc(ch["title"]), n=n, m=RAID_MINUTES))
+            await bot.send_message(
+                to, t(lang, "raid_alert", title=esc(ch["title"]), n=n, m=RAID_MINUTES), reply_markup=kb
+            )
         except TelegramAPIError:
             pass
+
+
+async def raid_summary(cid, minutes, total, stats):
+    ch = chats.get(cid)
+    if not ch:
+        return
+    for to in raid_targets(ch):
+        text = t(
+            lang_by_id(to), "raid_end",
+            title=esc(ch["title"]), m=minutes, n=total,
+            ok=stats.get("approved", 0), dec=stats.get("declined", 0),
+            to=stats.get("timeout", 0), bl=stats.get("blocked", 0),
+        )
+        try:
+            await bot.send_message(to, text)
+        except TelegramAPIError:
+            pass
+
+
+async def raid_sweep():
+    """Закриває рейди, у яких суворий режим добіг кінця, і надсилає підсумок."""
+    now = time.monotonic()
+    for cid, r in list(raid.items()):
+        if r["started"] is None or r["until"] > now:
+            continue
+        minutes = max(1, round((now - r["started"]) / 60))
+        r["started"] = None
+        await raid_summary(cid, minutes, r["total"], r["stats"])
+
+
+async def raid_loop():
+    while True:
+        await asyncio.sleep(30)
+        try:
+            await raid_sweep()
+        except Exception:
+            log.exception("raid loop")
 
 
 # ---------- капчі ----------
@@ -1200,7 +1314,7 @@ async def on_join_request(req: ChatJoinRequest):
         return
 
     if ch["mode"] == "captcha" and ch.get("raid_guard", True):
-        n = raid_hit(cid)
+        n = raid_hit(cid, ch.get("raid_n") or RAID_N)
         if n:
             background.append(asyncio.create_task(raid_alert(cid, n)))
 
@@ -1232,7 +1346,11 @@ async def on_join_request(req: ChatJoinRequest):
         msg = await bot.send_photo(req.user_chat_id, img(pic), caption=text, reply_markup=markup)
     except TelegramAPIError:
         log.warning("cannot message user %s", uid)
+        if raid_active(cid):  # під час рейду не лишаємо заявку висіти без капчі
+            await safe_decline(cid, uid)
+            record(cid, uid, "declined")
         return
+    keep_img(pic, msg)
     pending[key] = {
         "ucid": req.user_chat_id,
         "mid": msg.message_id,
@@ -1275,7 +1393,10 @@ async def on_applicant_lang(cb: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("t:"))
 async def on_test_answer(cb: CallbackQuery):
-    """Тест капчі: усе так само, як бачить заявник (картинки, спроби, пауза), але нічого не змінюється."""
+    """Тест капчі: усе так само, як бачить заявник (картинки, спроби, пауза), але нічого не змінюється.
+
+    Друге завдання, яке заявник отримує під час рейду, тест не показує.
+    """
     parts = cb.data.split(":")
     cid, uid = int(parts[1]), int(parts[2])
     if cb.from_user.id != uid or cid not in chats:
@@ -1361,6 +1482,14 @@ async def on_answer(cb: CallbackQuery):
             await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
             await cb.answer()
             return
+
+    if correct and ch and info.get("passed", 0) + 1 < ch.get("steps", 1):
+        info["passed"] = info.get("passed", 0) + 1
+        pending[key] = info
+        text, markup, info["nonce"] = captcha_message(ch, lang, cid, uid, head=t(lang, "raid_second"))
+        await edit_card(cb.message.chat.id, cb.message.message_id, "captcha", text, markup)
+        await cb.answer()
+        return
 
     pending.pop(key, None)
     name, username = info["name"], info["username"]
@@ -1516,9 +1645,9 @@ async def panel_view(cid, lang, uid):
             warn = t(lang, "warn_rights")
     except TelegramAPIError:
         pass
-    rd_ = raid.get(cid)
-    if rd_ and rd_["until"] > time.monotonic():
-        warn += t(lang, "raid_on", m=max(1, int((rd_["until"] - time.monotonic()) / 60)))
+    in_raid = raid_active(cid)
+    if in_raid:
+        warn += t(lang, "raid_on")
     mode = t(lang, "mode_captcha" if ch["mode"] == "captcha" else "mode_auto")
     text = t(
         lang, "panel",
@@ -1540,6 +1669,8 @@ async def panel_view(cid, lang, uid):
     ])
     if ch.get("ctype") == "channel":
         kb.inline_keyboard.insert(-1, [btn(t(lang, "b_footer"), f"x:fo:{cid}")])
+    if in_raid:
+        kb.inline_keyboard.insert(0, [btn(t(lang, "b_raid_stop"), f"x:rs:{cid}")])
     return text, kb
 
 
@@ -1552,13 +1683,16 @@ def settings_view(cid, lang):
         [btn(t(lang, "b_timeout", v=fmt_min(lang, ch["timeout"])), f"x:to:{cid}")],
         [btn(t(lang, "b_tries", v=ch["max_tries"]), f"x:tr:{cid}")],
         [btn(t(lang, "b_cool", v=fmt_min(lang, ch["cooldown"])), f"x:cd:{cid}")],
-        [btn(t(lang, "b_raid", v=onoff(ch["raid_guard"])), f"x:rg:{cid}")],
+        [
+            btn(t(lang, "b_raid", v=onoff(ch["raid_guard"])), f"x:rg:{cid}"),
+            btn(t(lang, "b_raid_n", v=ch["raid_n"]), f"x:rn:{cid}"),
+        ],
         [btn(t(lang, "b_weekly", v=onoff(ch["weekly"])), f"x:wk:{cid}")],
         [btn(t(lang, "b_notify", v=t(lang, "nm_" + ch["notify_mode"])), f"x:nm:{cid}")],
         [btn(t(lang, "b_help"), f"x:hp:{cid}")],
         [btn(t(lang, "b_back"), f"o:{cid}")],
     ])
-    return t(lang, "set_title", title=esc(ch["title"]), n=RAID_N, m=RAID_MINUTES), kb
+    return t(lang, "set_title", title=esc(ch["title"])), kb
 
 
 def notif_view(cid, lang):
@@ -2510,7 +2644,15 @@ async def on_action(cb: CallbackQuery):
         screen = "set"
     elif act == "rg":
         await upd(cid, raid_guard=not ch["raid_guard"])
+        if not ch["raid_guard"]:
+            raid.pop(cid, None)  # вимкнули антирейд — суворий режим теж закінчується
         screen = "set"
+    elif act == "rs":
+        raid_stop(cid)
+        text, kb = await panel_view(cid, lang, uid)
+        await show_chan(cb, cid, "shield", text, kb)
+        await cb.answer(t(lang, "raid_stopped", m=RAID_SNOOZE), show_alert=True)
+        return
     elif act == "wk":
         await upd(cid, weekly=not ch["weekly"])
         screen = "set"
@@ -2680,7 +2822,7 @@ async def on_action(cb: CallbackQuery):
         return
     elif act == "hp":
         kb = InlineKeyboardMarkup(inline_keyboard=[[btn(t(lang, "b_back"), f"x:se:{cid}")]])
-        await show(cb, t(lang, "set_help", n=RAID_N, m=RAID_MINUTES), kb)
+        await show(cb, t(lang, "set_help", n=ch["raid_n"], m=RAID_MINUTES, s=RAID_SNOOZE), kb)
         await cb.answer()
         return
     elif act == "wl":
@@ -3107,6 +3249,7 @@ async def on_startup(bot: Bot):
     background.append(asyncio.create_task(timeout_loop()))
     background.append(asyncio.create_task(flush_loop()))
     background.append(asyncio.create_task(weekly_loop()))
+    background.append(asyncio.create_task(raid_loop()))
 
 
 async def on_shutdown(bot: Bot):
